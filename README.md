@@ -3,4 +3,4 @@ Code associated with analysis of low-coverage whole genome sequence data in asso
 
 ## Raw Whole Genome Sequencing Analysis is described in the "Whole_genome_analysis.md" file.
 ## Association testing is described in "Association_testing.md" file.
-## R scripts are provided for data visualization
+## R script "wg_analysis.Rmd" is provided for data wrangling and visualization
