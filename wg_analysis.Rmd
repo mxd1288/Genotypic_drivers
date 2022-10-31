@@ -1,0 +1,3246 @@
+---
+title: "OCNJ WGS Analysis"
+author: "Melissa Drown"
+date: "Spring 2022"
+---
+```{r}
+library(ggplot2)
+library(dplyr)
+
+```
+
+Metadata
+```{r}
+wgs_meta <- read.csv("~/Desktop/wg_analysis/OCNJ_Library_Overview.txt", sep="\t")
+wgs_f18_bams <- read.csv("~/Desktop/wg_analysis/F18_bams.list.txt", sep="\t", header=FALSE)
+age_dat <- read.csv("~/Desktop/wg_analysis/OCNJAges.csv")
+wgs_all_bams <- read.csv("~/Desktop/wg_analysis/bams.list", sep="\t", header=FALSE)
+
+wgs_f18_bams$V1 %in% wgs_meta$file_prefix
+
+wgs_f18_bams$file_prefix <- wgs_f18_bams$V1
+
+f18_meta <- left_join(wgs_f18_bams, wgs_meta)
+f18_meta <- f18_meta[,2:11]
+f18_meta <- left_join(f18_meta, age_dat, by="fish_id")
+
+genomic_idx <- match(wgs_f18_bams$file_prefix, f18_meta$file_prefix)
+f18_meta <- f18_meta[genomic_idx,]
+
+##########################
+# Fall 2019
+wgs_f19_bams <- read.csv("~/Desktop/wg_analysis/F19_bams.list.txt", sep="\t", header=FALSE)
+wgs_f19_bams$file_prefix <- wgs_f19_bams$V1
+
+f19_meta <- left_join(wgs_f19_bams, wgs_meta)
+f19_meta <- f19_meta[,2:11]
+
+genomic_idx <- match(wgs_f19_bams$file_prefix, f19_meta$file_prefix)
+f19_meta <- f19_meta[genomic_idx,]
+
+###########################
+# Fall 2020
+wgs_f20_bams <- read.csv("~/Desktop/wg_analysis/F20_bams.list.txt", sep="\t", header=FALSE)
+wgs_f20_bams$file_prefix <- wgs_f20_bams$V1
+
+f20_meta <- left_join(wgs_f20_bams, wgs_meta)
+f20_meta <- f20_meta[,2:11]
+
+genomic_idx <- match(wgs_f20_bams$file_prefix, f20_meta$file_prefix)
+f20_meta <- f20_meta[genomic_idx,]
+```
+Freebayes filtering - iteration 1
+```{r}
+# missingness and depth
+# per individual
+miss <- read.csv("~/Desktop/wg_analysis/all/missingness/out.imiss", sep="\t")
+hist(1-miss$F_MISS, breaks=20)
+
+# per site
+smiss <- read.csv("~/Desktop/wg_analysis/all/missingness/out.lmiss", sep="\t")
+hist(1-smiss$F_MISS, breaks=20)
+
+```
+
+Freebayes filtering -  iteration 2
+```{R}
+# missingness and depth
+# per individual
+miss <- read.csv("~/Desktop/wg_analysis/All/missingness/out_vcf1.imiss", sep="\t")
+hist(1-miss$F_MISS, breaks=20)
+
+# per site
+smiss <- read.csv("~/Desktop/wg_analysis/All/missingness/out_vcf1.lmiss", sep="\t")
+hist(1-smiss$F_MISS, breaks=20)
+
+# after 5% MAF filter
+# per individual
+miss <- read.csv("~/Desktop/wg_analysis/All/missingness/out_vcf2.imiss", sep="\t")
+hist(1-miss$F_MISS, breaks=20)
+
+# per site
+smiss <- read.csv("~/Desktop/wg_analysis/All/missingness/out_vcf2.lmiss", sep="\t")
+hist(1-smiss$F_MISS, breaks=100)
+
+
+# per individual after filtering for missingness by site
+imiss <- read.csv("~/Desktop/wg_analysis/All/missingness/out_vcf3.imiss", sep="\t")
+hist(imiss$F_MISS, breaks=100, ylim = c(0, 100), xlim=c(0.7,0.95))
+
+subset(imiss, imiss$F_MISS<0.95)
+
+
+lmiss <- read.csv("~/Desktop/wg_analysis/All/missingness/missingsite_afterindv.lmiss", sep="\t")
+hist(lmiss$F_MISS, breaks=100)
+
+nrow(subset(lmiss, lmiss$F_MISS<0.75))
+
+# after filtering
+## missing sites
+v5_lmiss <- read.csv("~/Desktop/wg_analysis/All/missingness/miss_site_vcf5.out.lmiss", sep="\t")
+hist(v5_lmiss$F_MISS, breaks=100)
+
+mean(v5_lmiss$F_MISS) #0.68
+
+
+## missing indv
+v5_imiss <- read.csv("~/Desktop/wg_analysis/All/missingness/miss_indv_vcf5.out.imiss", sep="\t")
+hist(v5_imiss$F_MISS, breaks=100)
+
+mean(v5_imiss$F_MISS) #0.81
+
+```
+Depth in ANGSD for all
+```{r}
+# filters:  -doDepth 1 -maxDepth 10000 -GL 1 -doMajorMinor 1 -doMaf 1 -doCounts 1 -dumpCounts 1 -minMapQ 20 -minQ 20 -remove_bads 1 -only_proper_pairs 1 -C 50 -nThreads 15 
+
+depth <- read.csv("~/Desktop/wg_analysis/All/depth/angsd_OCNJ_depth.depthGlobal", header=FALSE, sep="\t")
+depth <- t(depth)
+
+# global depth
+depth <- as.data.frame(depth)
+depth$coverage <- seq(0, 10001)
+colnames(depth) <- c("count", "coverage")
+
+
+
+# subset to get a closer look at distribution
+depth_sub <- subset(depth, coverage < 100)
+depth_sub$coverage <- as.numeric(depth_sub$coverage)
+
+ggplot(depth, aes(x=coverage, y=count)) +
+  geom_bar(stat="identity") + 
+  xlim(values=c(0, 500)) +
+  theme_bw()
+
+ggplot(depth_sub, aes(x=coverage, y=count)) +
+  geom_bar(stat="identity") + 
+  xlim(values=c(0, 100)) +
+  theme_bw()
+
+
+# calculate average depth for all
+depth <- depth %>% mutate(depth_x_count=(coverage*count))
+depth <- depth[1:10001,]
+sum(depth$count) # 477,030,449 sites
+sum(depth$depth_x_count)/sum(depth$count)  # mean = 19.93354
+sqrt(abs(sum((depth$depth_x_count)-(19.93354)^2)/sum(depth$count))) # sd = 4.463766
+
+# Fall 2018 only
+
+depth2 <- read.csv("~/Desktop/wg_analysis/All/depth/angsd_OCNJ_F18_depth.depthGlobal", header=FALSE, sep="\t")
+depth2 <- t(depth2)
+
+# global depth
+depth2 <- as.data.frame(depth2)
+depth2$coverage <- seq(0, 10001)
+colnames(depth2) <- c("count", "coverage")
+
+
+# subset to get a closer look at distribution
+depth_sub2 <- subset(depth2, coverage < 100)
+depth_sub2$coverage <- as.numeric(depth_sub2$coverage)
+
+ggplot(depth2, aes(x=coverage, y=count)) +
+  geom_bar(stat="identity") + 
+  xlim(values=c(0, 500)) +
+  theme_bw()
+
+ggplot(depth_sub2, aes(x=coverage, y=count)) +
+  geom_bar(stat="identity") + 
+  xlim(values=c(0, 100)) +
+  labs(title="F18 Depth", x ="coverage", y = "count") +
+  theme_bw()
+
+ggplot(depth_sub, aes(x=coverage, y=count)) +
+  geom_bar(stat="identity") + 
+  xlim(values=c(0, 100)) +
+  labs(title="All Depth", x ="coverage", y = "count") +
+  theme_bw()
+
+
+```
+
+```{r}
+# Depth per sample
+samp_depth <- read.csv("~/Desktop/wg_analysis/All/depth/angsd_OCNJ_depth.depthSample", header=FALSE, sep="\t")
+samp_depth <- samp_depth[,1:10001]
+
+# combine with sample IDs
+wgs_all_bams <- read.csv("~/Desktop/wg_analysis/bams.list.txt", sep="\t", header=FALSE)
+length(wgs_all_bams$V1)
+samp_depth$sample_id <- wgs_all_bams$V1
+
+str(samp_depth)
+
+samp_depth_t <- as.data.frame(t(samp_depth))
+colnames(samp_depth_t) <- samp_depth_t[10002,]
+samp_depth_t <- samp_depth_t[1:10001,]
+
+for (i in 1:1120) {
+  samp_depth_t[,i] <- as.numeric(samp_depth_t[,i])
+}
+str(samp_depth_t)
+
+# but this isn't the real mean, this is the avg number of sites per bin..
+mean(samp_depth_t$`G1G2G6-F18`)
+
+# need to multiply each bin by coverage
+samp_depth_t$coverage <- seq(0, 10000)
+
+OCNJ_depth <- data.frame(matrix(ncol=2,nrow=1120))
+colnames(OCNJ_depth) <- c("average_depth", "count")
+rownames(OCNJ_depth) <- colnames(samp_depth_t[,1:1120])
+
+for (i in 1:1120) {
+OCNJ_depth[i,1] <- sum(samp_depth_t[,i]*samp_depth_t$coverage)/sum(samp_depth_t[2:10000,i])
+OCNJ_depth[i,2] <- sum(samp_depth_t[2:10000,i])
+}
+
+# average depth at sites that have non-zero depth
+OCNJ_depth <- na.omit(OCNJ_depth)
+mean(OCNJ_depth$average_depth) # 3.21X
+hist(OCNJ_depth$average_depth, breaks=100)
+abline(v = mean(OCNJ_depth$average_depth), col="red", lwd=3, lty=2)
+
+# average without F18
+OCNJ_depth_NOTF18 <- OCNJ_depth[!grepl("F18", rownames(OCNJ_depth)),]
+mean(OCNJ_depth_NOTF18) #3.04X
+
+# just F2018 individuals 
+OCNJ_depth_F18 <- OCNJ_depth[grepl("F18", rownames(OCNJ_depth)),]
+
+hist(OCNJ_depth_F18, breaks=50)
+abline(v = mean(OCNJ_depth_F18), col="red", lwd=3, lty=2)
+mean(OCNJ_depth_F18) #4.1X
+
+
+```
+
+PCANGSD - uses GL, 2.5 mil ANGSD sites (filters in ANGSD)
+```{R}
+# PCANGSD (PLINK in name is wrong, was run with PCANGSD for 2.5 mil sites with 1120 indvs.) 
+covs <- as.matrix(read.table("~/Desktop/wg_analysis/All/pcangsd/OCNJ2_plink.cov")) # Reads in estimated covariance matrix
+covs <- as.data.frame(covs)
+
+# get eigenvalues and vectors
+covs_eigen <- eigen(covs)
+
+# add metadata
+cov_eigen_vals <- covs_eigen$values
+cov_eigen_vecs <- as.data.frame(covs_eigen$vectors)
+
+# PC1 = 8.42, PC2 = 1.09
+cov_eigen_vals
+
+# add sample IDs
+wgs_all_bams <- read.csv("~/Desktop/wg_analysis/bams.list.txt", sep="\t", header=FALSE)
+age_dat <- read.csv("~/Desktop/wg_analysis/OCNJAges.csv")
+wgs_meta <- left_join(wgs_meta, age_dat, by="fish_id")
+cov_eigen_vecs$unique_id <- wgs_all_bams$V1
+
+# combine with metadata
+eigen_full <- left_join(cov_eigen_vecs, wgs_meta, by="unique_id")
+eigen_full <- subset(eigen_full, eigen_full$population!="NA")
+eigen_full <- subset(eigen_full, eigen_full$population!="UN")
+
+
+var_list <- eigen_full[,c(382:385)]
+
+for (i in var_list) { 
+  print(ggplot(data=eigen_full) +
+      geom_point(aes(x=V1, y=V2, col=i)) +
+  labs(x="PC1 - 8.42%", y="PC2 - 1.09%", title="PCAngsd - OCNJ 2.5 million SNPs") +
+  stat_ellipse(aes(x=V1, y=V2, col=i)) +
+  theme_bw()
+  ) 
+}
+
+for (i in var_list) { 
+  print(ggplot(data=eigen_full) +
+      geom_point(aes(x=V2, y=V3, col=i)) +
+  labs(x="PC1 - 8.42%", y="PC2 - 1.09%", title="PCAngsd - OCNJ 2.5 million SNPs") +
+  stat_ellipse(aes(x=V1, y=V2, col=i)) +
+  theme_bw()
+  ) 
+}
+```
+
+```{r}
+
+# stringent ANGSD - 68k SNPS in 1120 individuals
+
+covs <- as.matrix(read.table("~/Desktop/wg_analysis/All/pcangsd/OCNJ1_pcangsd.cov")) # Reads in estimated covariance matrix
+covs <- as.data.frame(covs)
+
+# get eigenvalues and vectors
+covs_eigen <- eigen(covs)
+
+# make dfs
+cov_eigen_vals <- covs_eigen$values
+cov_eigen_vecs <- as.data.frame(covs_eigen$vectors)
+
+# PC1 = 16.6, PC2 = 1.24
+cov_eigen_vals
+
+# add sample IDs
+wgs_all_bams <- read.csv("~/Desktop/wg_analysis/bams.list.txt", sep="\t", header=FALSE)
+cov_eigen_vecs$unique_id <- wgs_all_bams$V1
+
+# combine with metadata
+age_dat <- read.csv("~/Desktop/wg_analysis/OCNJAges.csv")
+wgs_meta <- left_join(wgs_meta, age_dat, by="fish_id")
+eigen_full <- left_join(cov_eigen_vecs, wgs_meta, by="unique_id")
+eigen_full <- subset(eigen_full, eigen_full$population!="NA")
+eigen_full <- subset(eigen_full, eigen_full$population!="UN")
+
+var_list <- eigen_full[,c(1123:1126,1130,1132)]
+
+for (i in var_list) { 
+  print(ggplot(data=eigen_full) +
+      geom_point(aes(x=V1, y=V2, col=as.factor(i))) +
+  labs(x="PC1 - 16.56%", y="PC2 - 1.24%", title="PCAngsd - OCNJ 68k SNPs") +
+  stat_ellipse(aes(x=V1, y=V2, col=as.factor(i))) +
+  theme_bw()
+  ) 
+}
+
+for (i in var_list) { 
+  print(ggplot(data=eigen_full) +
+      geom_point(aes(x=V2, y=V3, col=as.factor(i))) +
+  labs(x="PC2 - 1.24%", y="PC2 - 1.16%", title="PCAngsd - OCNJ 68k SNPs") +
+  stat_ellipse(aes(x=V1, y=V2, col=as.factor(i))) +
+  theme_bw()
+  ) 
+}
+
+```
+```{R}
+# ANGSD filtered for the same ~700k SNPs that overlap between ANGSD GL and Freebayes dataset -- ALL INDIVIDUALS
+
+covs <- as.matrix(read.table("~/Desktop/wg_analysis/All/pcangsd_sites/OCNJ_sites_overlap_pcangsd.cov")) # Reads in estimated covariance matrix
+covs <- as.data.frame(covs)
+
+# get eigenvalues and vectors
+covs_eigen <- eigen(covs)
+
+# make dfs
+cov_eigen_vals <- covs_eigen$values
+cov_eigen_vecs <- as.data.frame(covs_eigen$vectors)
+
+# PC1 = 12.6, PC2 = 1.17, PC3=1.17
+cov_eigen_vals
+
+# add sample IDs
+wgs_all_bams <- read.csv("~/Desktop/wg_analysis/bams.list.txt", sep="\t", header=FALSE)
+cov_eigen_vecs$unique_id <- wgs_all_bams$V1
+
+# combine with metadata
+age_dat <- read.csv("~/Desktop/wg_analysis/OCNJAges.csv")
+wgs_meta <- left_join(wgs_meta, age_dat, by="fish_id")
+eigen_full <- left_join(cov_eigen_vecs, wgs_meta, by="unique_id")
+eigen_full <- subset(eigen_full, eigen_full$population!="NA")
+eigen_full <- subset(eigen_full, eigen_full$population!="UN")
+
+var_list <- eigen_full[,c(1123:1126,1130,1132)]
+
+for (i in var_list) { 
+  print(ggplot(data=eigen_full) +
+      geom_point(aes(x=V1, y=V2, col=as.factor(i))) +
+  labs(x="PC1 - 12.6%", y="PC2 - 1.17%", title="PCAngsd - OCNJ 700k SNP Freebayes + ANGSD overlap") +
+  stat_ellipse(aes(x=V1, y=V2, col=as.factor(i))) +
+  theme_bw()
+  ) 
+}
+
+for (i in var_list) { 
+  print(ggplot(data=eigen_full) +
+      geom_point(aes(x=V2, y=V3, col=as.factor(i))) +
+  labs(x="PC2 - 1.17%", y="PC3 - 1.17%", title="PCAngsd - OCNJ 700k SNP Freebayes + ANGSD overlap") +
+  stat_ellipse(aes(x=V1, y=V2, col=as.factor(i))) +
+  theme_bw()
+  ) 
+}
+```
+
+```{R}
+# Add global depth for the 1.5 mil SNPs from Freebayes in ANGSD
+# Depth per sample
+samp_depth_filt <- read.csv("~/Desktop/wg_analysis/All/depth_filtered/ocnj_sites.depthSample", header=FALSE, sep="\t")
+samp_depth_filt <- samp_depth_filt[,1:101]
+
+# combine with sample IDs
+wgs_all_bams <- read.csv("~/Desktop/wg_analysis/bams.list.txt", sep="\t", header=FALSE)
+length(wgs_all_bams$V1)
+samp_depth_filt$sample_id <- wgs_all_bams$V1
+
+str(samp_depth_filt)
+
+samp_depth_filt_t <- as.data.frame(t(samp_depth_filt))
+colnames(samp_depth_filt_t) <- samp_depth_filt_t[102,]
+samp_depth_filt_t <- samp_depth_filt_t[1:101,]
+
+for (i in 1:1120) {
+  samp_depth_filt_t[,i] <- as.numeric(samp_depth_filt_t[,i])
+}
+str(samp_depth_filt_t)
+
+# but this isn't the real mean, this is the avg number of sites per bin..
+mean(samp_depth_filt_t$`G1G2G6-F18`)
+
+# need to multiply each bin by coverage
+samp_depth_filt_t$coverage <- seq(0, 100)
+
+OCNJ_depth_filt <- data.frame(matrix(ncol=2,nrow=1120))
+colnames(OCNJ_depth_filt) <- c("average_depth","count")
+rownames(OCNJ_depth_filt) <- colnames(samp_depth_filt_t[,1:1120])
+
+for (i in 1:1120) {
+OCNJ_depth_filt[i,1] <- sum(samp_depth_filt_t[,i]*samp_depth_filt_t$coverage)/sum(samp_depth_filt_t[2:100,i])
+OCNJ_depth_filt[i,2] <- sum(samp_depth_filt_t[2:100,i])
+}
+
+# average depth at sites that have non-zero depth
+OCNJ_depth_filt <- na.omit(OCNJ_depth_filt)
+mean(OCNJ_depth_filt$average_depth) # 2.85X
+hist(OCNJ_depth_filt$average_depth, breaks=100)
+abline(v = mean(OCNJ_depth_filt$average_depth), col="red", lwd=3, lty=2)
+
+# without Fall 2018 individuals
+OCNJ_depth_filt_NOTF18 <- OCNJ_depth_filt[!grepl("F18", rownames(OCNJ_depth_filt)),]
+mean(OCNJ_depth_filt_NOTF18)
+
+# just F2018 individuals 
+OCNJ_depth_filt_F18 <- OCNJ_depth_filt[grepl("F18", rownames(OCNJ_depth_filt)),]
+
+hist(OCNJ_depth_filt_F18)
+abline(v = mean(OCNJ_depth_filt_F18), col="red", lwd=3, lty=2)
+mean(OCNJ_depth_filt_F18) #3.8X
+
+
+######## KEPT 380 INDVS ####
+# hist just of kept individuals
+kept_indv <- read.csv("~/Desktop/wg_analysis/All/OCNJ_kept_samples.csv", header=FALSE)
+
+OCNJ_depth_kept <- subset(OCNJ_depth_filt, rownames(OCNJ_depth_filt) %in% kept_indv$V1)
+
+hist(OCNJ_depth_kept$average_depth, breaks=100)
+abline(v = mean(OCNJ_depth_kept$average_depth), col="red", lwd=3, lty=2)
+mean(OCNJ_depth_kept$average_depth) # 3.9X
+
+# depth of everyone excluding F2018
+OCNJ_depth_kept_NOTF18 <- OCNJ_depth_kept[!grepl("F18", rownames(OCNJ_depth_kept)),]
+mean(OCNJ_depth_kept_NOTF18) #3.7X
+
+# depth of just F2018
+OCNJ_depth_kept_F18 <- OCNJ_depth_kept[grepl("F18", rownames(OCNJ_depth_kept)),]
+
+hist(OCNJ_depth_kept_F18, breaks=50)
+abline(v = mean(OCNJ_depth_kept_F18), col="red", lwd=3, lty=2)
+mean(OCNJ_depth_kept_F18) #4.5X
+```
+
+```{R}
+# ANGSD filtered for the same 1.5 million SNPs as Freebayes dataset -- ALL INDIVIDUALS
+
+covs <- as.matrix(read.table("~/Desktop/wg_analysis/All/pcangsd_sites/OCNJ_sites_pcangsd.cov")) # Reads in estimated covariance matrix
+covs <- as.data.frame(covs)
+
+# get eigenvalues and vectors
+covs_eigen <- eigen(covs)
+
+# make dfs
+cov_eigen_vals <- covs_eigen$values
+cov_eigen_vecs <- as.data.frame(covs_eigen$vectors)
+
+# PC1 = 12.3, PC2 = 1.15, PC3=1.15
+cov_eigen_vals
+
+# add sample IDs
+wgs_all_bams <- read.csv("~/Desktop/wg_analysis/bams.list.txt", sep="\t", header=FALSE)
+cov_eigen_vecs$unique_id <- wgs_all_bams$V1
+
+# combine with metadata
+age_dat <- read.csv("~/Desktop/wg_analysis/OCNJAges.csv")
+wgs_meta <- left_join(wgs_meta, age_dat, by="fish_id")
+eigen_full <- left_join(cov_eigen_vecs, wgs_meta, by="unique_id")
+eigen_full <- subset(eigen_full, eigen_full$population!="NA")
+eigen_full <- subset(eigen_full, eigen_full$population!="UN")
+
+# add depth
+OCNJ_depth_merge <- OCNJ_depth
+OCNJ_depth_merge$unique_id <- rownames(OCNJ_depth_merge)
+eigen_full <- left_join(eigen_full, OCNJ_depth_merge, by="unique_id")
+
+var_list <- eigen_full[,c(1123:1126,1130,1134:1136)]
+
+for (i in var_list) { 
+  print(ggplot(data=eigen_full) +
+      geom_point(aes(x=V1, y=V2, col=as.factor(i))) +
+  labs(x="PC1 - 12.3%", y="PC2 - 1.15%", title="PCAngsd - OCNJ 1.5 million SNPs") +
+  stat_ellipse(aes(x=V1, y=V2, col=as.factor(i))) +
+  theme_bw()
+  ) 
+}
+
+for (i in var_list) { 
+  print(ggplot(data=eigen_full) +
+      geom_point(aes(x=V2, y=V3, col=as.factor(i))) + 
+  labs(x="PC2 - 1.15%", y="PC2 - 1.15%", title="PCAngsd - OCNJ 1.5M SNPs") +
+  stat_ellipse(aes(x=V1, y=V2, col=as.factor(i))) +
+  theme_bw()
+  ) 
+}
+
+# Plot by timepoint
+ggplot(data=eigen_full) +
+  geom_point(aes(x=V1, y=V2, col=as.factor(habitat_temp), shape=population)) +
+  labs(x="PC1 - 12.3%", y="PC2 - 1.15%", title="PCAngsd - OCNJ 1.5M SNPs") +
+  stat_ellipse(aes(x=V1, y=V2, col=as.factor(habitat_temp)), size=0.5) +
+  facet_wrap(~timepoint) +
+  theme_bw()
+```
+Co-variance among variables
+```{R}
+# remove variance due to coverage and look again
+# Correlated with average_depth
+pc1_coverage <- lm(eigen_full$V1~eigen_full$average_depth)
+summary(pc1_coverage)
+
+# Correlated with count - number of sites
+pc1_count <- lm(eigen_full$V1~eigen_full$count)
+summary(pc1_count)
+
+# Not different by age p = 0.641
+pc1_age<- t.test(eigen_full$V1~eigen_full$age.x)
+pc1_age
+
+# not different between M and F
+pc1_sex<- aov(eigen_full$V1~eigen_full$sex)
+anova(pc1_sex)
+TukeyHSD(pc1_sex)
+
+# significantly different between pools, p-value < 2.2e-16
+pc1_pool<- t.test(eigen_full$V1~eigen_full$pool)
+pc1_pool
+
+# Depth is different between pools < 2.2e-16
+# Pool 1 = 3.539582   Pool 2 = 2.862679 
+depth_pool<- t.test(eigen_full$average_depth~eigen_full$pool)
+depth_pool
+
+# Depth among timepoints
+depth_timepoint<- aov(eigen_full$average_depth~eigen_full$timepoint)
+depth_timepoint
+anova(depth_timepoint)
+TukeyHSD(depth_timepoint)
+
+# number of sites among timepoints
+sites_timepoint<- aov(eigen_full$count~eigen_full$timepoint)
+sites_timepoint
+anova(sites_timepoint)
+TukeyHSD(sites_timepoint)
+
+# not different among populations
+pc1_pop<- aov(eigen_full$V1~eigen_full$population)
+anova(pc1_pop)
+
+# not different between TE and Refs
+pc1_habitat_temp<- t.test(eigen_full$V1~eigen_full$habitat_temp)
+pc1_habitat_temp
+
+```
+
+```{R}
+# ANGSD filtered for the same ~1.5 million SNPs from Freebayes dataset -- 380 INDIVIDUALS
+
+covs <- as.matrix(read.table("~/Desktop/wg_analysis/All/pcangsd_sites/OCNJ_sites_indv_filtered_pcangsd.cov")) # Reads in estimated covariance matrix
+covs <- as.data.frame(covs)
+
+# get eigenvalues and vectors
+covs_eigen <- eigen(covs)
+
+# make dfs
+cov_eigen_vals <- covs_eigen$values
+cov_eigen_vecs <- as.data.frame(covs_eigen$vectors)
+
+# PC1 = 10.3159934  PC2 = 1.1333142  PC3 = 1.1300615
+cov_eigen_vals
+
+# add sample IDs
+wgs_all_bams <- read.csv("~/Desktop/wg_analysis/bams_subset.list.txt", sep="\t", header=FALSE)
+cov_eigen_vecs$unique_id <- wgs_all_bams$V1
+
+# combine with metadata
+age_dat <- read.csv("~/Desktop/wg_analysis/OCNJAges.csv")
+wgs_meta <- read.csv("~/Desktop/wg_analysis/OCNJ_Library_Overview.txt", sep="\t")
+wgs_meta <- left_join(wgs_meta, age_dat, by="fish_id")
+eigen_full <- left_join(cov_eigen_vecs, wgs_meta, by="unique_id")
+eigen_full <- subset(eigen_full, eigen_full$population!="NA")
+eigen_full <- subset(eigen_full, eigen_full$population!="UN")
+
+# add depth
+OCNJ_depth_merge <- OCNJ_depth
+OCNJ_depth_merge$unique_id <- rownames(OCNJ_depth_merge)
+eigen_full <- left_join(eigen_full, OCNJ_depth_merge, by="unique_id")
+
+var_list <- eigen_full[,c(382:385,389,391)]
+
+for (i in var_list) { 
+  print(ggplot(data=eigen_full) +
+      geom_point(aes(x=V1, y=V2, col=as.factor(i))) +
+  labs(x="PC1 - 10.32%", y="PC2 - 1.13%", title="PCAngsd -OCNJ 1.5 million SNPs, 380 Indv") +
+  stat_ellipse(aes(x=V1, y=V2, col=as.factor(i))) +
+  theme_bw()
+  ) 
+}
+
+for (i in var_list) { 
+  print(ggplot(data=eigen_full) +
+      geom_point(aes(x=V2, y=V3, col=as.factor(i))) +
+  labs(x="PC2 - 1.13%", y="PC2 - 1.13%", title="PCAngsd -OCNJ 1.5 million SNPs, 380 Indv") +
+  stat_ellipse(aes(x=V1, y=V2, col=as.factor(i))) +
+  theme_bw()
+  ) 
+}
+
+# Plot by timepoint
+ggplot(data=eigen_full) +
+  geom_point(aes(x=V1, y=V2, col=as.factor(habitat_temp), shape=population)) +
+  labs(x="PC1 - 10.32%", y="PC2 - 1.13%", title="PCAngsd - OCNJ 1.5M SNPs, 380 Indv") +
+  stat_ellipse(aes(x=V1, y=V2, col=as.factor(habitat_temp)), size=0.5) +
+  facet_wrap(~timepoint) +
+  theme_bw()
+
+```
+
+```{R}
+# Look at relationship between PCs and co-variates
+# Correlated with average_depth
+pc1_coverage <- lm(eigen_full$V1~eigen_full$average_depth)
+summary(pc1_coverage)
+
+# Correlated with count - number of sites
+pc1_count <- lm(eigen_full$V1~eigen_full$count)
+summary(pc1_count)
+
+# Not different by age p = 0.6595
+pc1_age<- t.test(eigen_full$V1~eigen_full$age)
+pc1_age
+
+# not different between M and F p = 0.9623998
+pc1_sex<- aov(eigen_full$V1~eigen_full$sex)
+anova(pc1_sex)
+TukeyHSD(pc1_sex)
+
+# significantly different between pools, p-value = 0.02805
+pc1_pool<- t.test(eigen_full$V1~eigen_full$pool)
+pc1_pool
+
+# Depth is different between pools = 1.22e-14
+# Pool 1 = 4.54  Pool 2 = 3.52
+depth_pool<- t.test(eigen_full$average_depth~eigen_full$pool)
+depth_pool
+
+# Depth among timepoints
+depth_timepoint<- aov(eigen_full$average_depth~eigen_full$timepoint)
+depth_timepoint
+anova(depth_timepoint)
+TukeyHSD(depth_timepoint)
+
+# number of sites among timepoints
+sites_timepoint<- aov(eigen_full$count~eigen_full$timepoint)
+sites_timepoint
+anova(sites_timepoint)
+TukeyHSD(sites_timepoint)
+
+# not different among populations
+pc1_pop<- aov(eigen_full$V1~eigen_full$population)
+anova(pc1_pop)
+
+# not different between TE and Refs
+pc1_habitat_temp<- t.test(eigen_full$V1~eigen_full$habitat_temp)
+pc1_habitat_temp
+
+```
+NGSLD - 1.5 mil SNPs, all samples, within 10kb
+```{r}
+library(data.table)
+library(RColorBrewer)
+
+# read in data (gatk loci only)
+ld_dat <- fread('~/Desktop/wg_analysis/All/NGSLD/ngsLD_all_1.5mil_sites')
+
+
+# add column names
+nms <- c('pos1', 'pos1_loc', 'pos2', 'pos2_loc', 'dist', 'r2', 'D','Dprime','r2em')
+
+setnames(ld_dat, nms)
+ld_dat <- ld_dat[,c(1,3,5:9)]
+# calculate averages within bins (like Bario et al. 2016 eLife)
+stp1 <- 5 # step size for small distances
+thresh <- 50 # use stp2 above this distance
+stp2 <- 500
+
+ld_dat[,distclass:=floor(dist/stp1)*stp1+stp1/2]
+ld_dat[dist>thresh,distclass:=floor(dist/stp2)*stp2+stp2/2]
+
+bins_LD <- ld_dat[!is.na(r2),.(r2ave=mean(r2), r2sd=sd(r2), r2l95=quantile(r2,probs=0.025), r2u95=quantile(r2,probs=0.975), r2l75=quantile(r2,probs=0.125), r2u75=quantile(r2,probs=0.875), r2n=.N), by=distclass]
+
+bins_LD[,r2se:=r2sd/r2n]
+
+setkey(bins_LD, distclass)
+
+bins_LD[,pop:='all']
+
+#write.csv(bins_LD, file='~/Desktop/wg_analysis/ALL/NGSLD/ALL_1.5mil_ld_decay_ngsLD.csv')
+
+##############
+# plot
+###############
+bins <- fread('~/Desktop/wg_analysis/ALL/NGSLD/ALL_1.5mil_ld_decay_ngsLD.csv')
+cols <- brewer.pal(5, 'Set1')
+cex=0.5
+
+# 13,300 sites per win +/- 41,000
+mean(bins$r2n)
+sd(bins$r2n)
+
+mean(bins$r2ave) #0.18
+
+# plot binned data
+quartz(width=3, height=3)
+# pdf(width=3, height=3, file='figures/ld_decay_ngsLD.pdf')
+par(mai=c(0.5, 0.5, 0.3, 0.05), cex.axis=0.7, las=1, mgp=c(1.5, 0.3, 0), tcl=-0.15)
+bins[pop=='all',plot(distclass, r2ave, ylim=c(0,0.7), type='o', xlab='Distance (bp)', ylab='Average correlation (r2)', cex=cex, main='LD decay', log='x', col=cols[1])]
+
+```
+
+```{R}
+# Show individual points for LD
+ggplot(ld_dat, aes(x=dist, y=r2)) +
+  geom_point() +
+  theme_bw()
+
+```
+
+```{R}
+# SNPs not in LD
+
+bins_noLd <- subset(bins, bins$distclass > 500)
+sum(bins_noLd$r2n)
+
+sum(bins$r2n)
+```
+
+NGSLD - 1.5 mil SNPs, all samples, within 10kb - using probabilities
+```{R}
+
+library(data.table)
+library(RColorBrewer)
+
+# read in data (gatk loci only)
+ld_dat <- fread('~/Desktop/wg_analysis/All/NGSLD/ngsLD_10kb_all_1.5mil_sites_probs')
+
+
+# add column names
+nms <- c('pos1', 'pos1_loc', 'pos2', 'pos2_loc', 'dist', 'r2', 'D','Dprime','r2em')
+
+setnames(ld_dat, nms)
+ld_dat <- ld_dat[,c(1,3,5:9)]
+# calculate averages within bins (like Bario et al. 2016 eLife)
+stp1 <- 5 # step size for small distances
+thresh <- 50 # use stp2 above this distance
+stp2 <- 500
+
+ld_dat[,distclass:=floor(dist/stp1)*stp1+stp1/2]
+ld_dat[dist>thresh,distclass:=floor(dist/stp2)*stp2+stp2/2]
+
+bins_LD <- ld_dat[!is.na(r2),.(r2ave=mean(r2), r2sd=sd(r2), r2l95=quantile(r2,probs=0.025), r2u95=quantile(r2,probs=0.975), r2l75=quantile(r2,probs=0.125), r2u75=quantile(r2,probs=0.875), r2n=.N), by=distclass]
+
+bins_LD[,r2se:=r2sd/r2n]
+
+setkey(bins_LD, distclass)
+
+bins_LD[,pop:='all']
+
+#write.csv(bins_LD, file='~/Desktop/wg_analysis/ALL/NGSLD/10kb_1.5mil_ld_decay_probs_ngsLD.csv')
+
+##############
+# plot
+###############
+bins <- fread('~/Desktop/wg_analysis/ALL/NGSLD/50kb_1.5mil_ld_decay_ngsLD.csv')
+cols <- brewer.pal(5, 'Set1')
+cex=0.5
+
+# 13,300 sites per win +/- 41,000
+mean(bins$r2n)
+sd(bins$r2n)
+
+mean(bins$r2ave) #0.064
+
+# plot binned data
+quartz(width=3, height=3)
+# pdf(width=3, height=3, file='figures/ld_decay_ngsLD.pdf')
+par(mai=c(0.5, 0.5, 0.3, 0.05), cex.axis=0.7, las=1, mgp=c(1.5, 0.3, 0), tcl=-0.15)
+bins[pop=='all',plot(distclass, r2ave, ylim=c(0,0.7), type='o', xlab='Distance (bp)', ylab='Average correlation (r2)', cex=cex, main='LD decay', log='x', col=cols[1])]
+```
+
+```{R}
+ggplot(ld_dat, aes(x=dist, y=r2)) +
+  geom_point() +
+  theme_bw()
+```
+
+```{R}
+bins_noLd <- subset(bins, bins$distclass > 500)
+sum(bins_noLd$r2n)
+
+sum(bins$r2n)
+```
+
+Fall 2018 Fst Plots
+```{R}
+# pairwise comparison of all three populations
+library(tidyverse)
+setwd("~/Desktop/wg_analysis/All/F18_FST")
+file_list <- list.files(path="~/Desktop/wg_analysis/All/F18_FST")
+f18_fst_all <- data.frame()
+
+#had to specify columns to get rid of the total column
+for (i in 1:length(file_list)){
+  temp_data <- read_tsv(file_list[i]) #each file will be read in
+  colnames(temp_data) <- c("contig","pos","a","b","sum","fst")
+  temp_data$pop_pair <- sapply(strsplit(gsub(".txt", "", file_list[i]), "_"), function(x){x[1]}) #create a new column that indicates which file each row of data came from
+  f18_fst_all <- rbind(f18_fst_all, temp_data) #for each iteration, bind the new data to the building dataset
+}
+
+f18_fst_all$fdr_pval <- p.adjust(f18_fst_all$pval, method ="fdr", n = length(f18_fst_all$pval))
+f18_fst_all$bonf_pval <- p.adjust(f18_fst_all$pval, method ="bonferroni", n = length(f18_fst_all$pval))
+
+
+f18_fst_all <- f18_fst_all %>% mutate(., signif_level = ifelse(pval < 0.05, "UNCOR",
+                                     ifelse(fdr_pval <0.05, "FDR",
+                                            ifelse(bonf_pval <0.05, "BONF"))))
+
+cutoff_pval=-log10(0.05)
+
+# just chr 1
+f18_fst_chr1 <- subset(f18_fst_all, f18_fst_all$contig=="NC_046361.1")
+unique(f18_fst_all$contig)
+
+contigs <- c("NC_046361.1","NC_046362.1","NC_046363.1","NC_046364.1","NC_046365.1","NC_046366.1",   "NC_046367.1","NC_046368.1","NC_046369.1","NC_046370.1","NC_046371.1","NC_046372.1","NC_046373.1"   ,"NC_046374.1","NC_046375.1","NC_046376.1","NC_046377.1","NC_046378.1","NC_046379.1","NC_046380.1"  ,"NC_046381.1","NC_046382.1","NC_046383.1","NC_046384.1" )
+
+for (i in contigs[1:24]) { 
+  print(ggplot(data=subset(f18_fst_all, f18_fst_all$contig==i)) +
+    facet_wrap(~pop_pair) +
+    geom_point(aes(x=pos, y=-log10(pval)), pch=1, alpha=0.5, size=2, col=signif_level) +
+    geom_hline(yintercept=cutoff_pval, linetype="dashed", color="red") +
+    labs(x="Chromosomal Position", y="-log10(pval)", main="Fall 2018") +
+    theme_bw()
+  ) 
+}
+
+#write.csv(f18_fst_all, "~/Desktop/wg_analysis/All/F18_FST/f18_fst_all.csv")
+```
+Fall 2019 Fst Plots
+```{R}
+# pairwise comparison of all three populations
+library(tidyverse)
+setwd("~/Desktop/wg_analysis/All/F19_FST")
+file_list <- list.files(path="~/Desktop/wg_analysis/All/F19_FST")
+f19_fst_all <- data.frame()
+
+#had to specify columns to get rid of the total column
+for (i in 1:length(file_list)){
+  temp_data <- read_tsv(file_list[i]) #each file will be read in
+  colnames(temp_data) <- c("contig","pos","a","b","sum","fst")
+  temp_data$pop_pair <- sapply(strsplit(gsub(".txt", "", file_list[i]), "_"), function(x){x[1]}) #create a new column that indicates which file each row of data came from
+  f19_fst_all <- rbind(f19_fst_all, temp_data) #for each iteration, bind the new data to the building dataset
+}
+
+f19_fst_all$fdr_pval <- p.adjust(f19_fst_all$pval, method ="fdr", n = length(f19_fst_all$pval))
+f19_fst_all$bonf_pval <- p.adjust(f19_fst_all$pval, method ="bonferroni", n = length(f19_fst_all$pval))
+
+
+f19_fst_all <- f19_fst_all %>% mutate(., signif_level = ifelse(pval < 0.05, "UNCOR",
+                                     ifelse(fdr_pval <0.05, "FDR",
+                                            ifelse(bonf_pval <0.05, "BONF"))))
+
+cutoff_pval=-log10(0.05)
+
+# just chr 1
+f19_fst_chr1 <- subset(f19_fst_all, f19_fst_all$contig=="NC_046361.1")
+unique(f19_fst_all$contig)
+
+contigs <- c("NC_046361.1","NC_046362.1","NC_046363.1","NC_046364.1","NC_046365.1","NC_046366.1",   "NC_046367.1","NC_046368.1","NC_046369.1","NC_046370.1","NC_046371.1","NC_046372.1","NC_046373.1"   ,"NC_046374.1","NC_046375.1","NC_046376.1","NC_046377.1","NC_046378.1","NC_046379.1","NC_046380.1"  ,"NC_046381.1","NC_046382.1","NC_046383.1","NC_046384.1" )
+
+for (i in contigs[1:24]) { 
+  print(ggplot(data=subset(f19_fst_all, f19_fst_all$contig==i)) +
+    facet_wrap(~pop_pair) +
+    geom_point(aes(x=pos, y=-log10(pval)), pch=1, alpha=0.5, size=2, col=signif_level) +
+    geom_hline(yintercept=cutoff_pval, linetype="dashed", color="red") +
+    labs(x="Chromosomal Position", y="-log10(pval)", main="Fall 2019") +
+    theme_bw()
+  ) 
+}
+
+#write.csv(f19_fst_all, "~/Desktop/wg_analysis/All/F19_FST/f19_fst_all.csv")
+```
+
+Fall 2020 Fst Plots
+```{R}
+# pairwise comparison of all three populations
+library(tidyverse)
+setwd("~/Desktop/wg_analysis/All/F20_FST")
+file_list <- list.files(path="~/Desktop/wg_analysis/All/F20_FST")
+F20_fst_all <- data.frame()
+
+#had to specify columns to get rid of the total column
+for (i in 1:length(file_list)){
+  temp_data <- read_tsv(file_list[i]) #each file will be read in
+  colnames(temp_data) <- c("contig","pos","a","b","sum","fst")
+  temp_data$pop_pair <- sapply(strsplit(gsub(".txt", "", file_list[i]), "_"), function(x){x[1]}) #create a new column that indicates which file each row of data came from
+  F20_fst_all <- rbind(F20_fst_all, temp_data) #for each iteration, bind the new data to the building dataset
+}
+
+f20_fst_all$fdr_pval <- p.adjust(f20_fst_all$pval, method ="fdr", n = length(f20_fst_all$pval))
+f20_fst_all$bonf_pval <- p.adjust(f20_fst_all$pval, method ="bonferroni", n = length(f20_fst_all$pval))
+
+
+f20_fst_all <- f20_fst_all %>% mutate(., signif_level = ifelse(pval < 0.05, "UNCOR",
+                                     ifelse(fdr_pval <0.05, "FDR",
+                                            ifelse(bonf_pval <0.05, "BONF", "NS"))))
+
+cutoff_pval=-log10(0.05)
+
+# just chr 1
+F20_fst_chr1 <- subset(F20_fst_all, F20_fst_all$contig=="NC_046361.1")
+unique(F20_fst_all$contig)
+
+contigs <- c("NC_046361.1","NC_046362.1","NC_046363.1","NC_046364.1","NC_046365.1","NC_046366.1",   "NC_046367.1","NC_046368.1","NC_046369.1","NC_046370.1","NC_046371.1","NC_046372.1","NC_046373.1"   ,"NC_046374.1","NC_046375.1","NC_046376.1","NC_046377.1","NC_046378.1","NC_046379.1","NC_046380.1"  ,"NC_046381.1","NC_046382.1","NC_046383.1","NC_046384.1" )
+
+for (i in contigs[1:24]) { 
+  print(ggplot(data=subset(F20_fst_all, F20_fst_all$contig==i)) +
+    facet_wrap(~pop_pair) +
+    geom_point(aes(x=pos, y=-log10(pval)), pch=1, alpha=0.5, size=2, col=signif_level) +
+    geom_hline(yintercept=cutoff_pval, linetype="dashed", color="red") +
+    labs(x="Chromosomal Position", y="-log10(pval)", main="Fall 2020") +
+    theme_bw()
+  ) 
+}
+
+#write.csv(F20_fst_all, "~/Desktop/wg_analysis/All/F20_FST/f20_fst_all.csv")
+```
+
+```{R}
+# "outlier" based on top 0.01% (~top 100-150)
+# venn diagram
+library(RColorBrewer)
+library(VennDiagram)
+
+f18_TENR <- subset(f18_fst_all, f18_fst_all$pop_pair=="TE.NR")
+f18_TESR <- subset(f18_fst_all, f18_fst_all$pop_pair=="TE.SR")
+f18_NRSR <- subset(f18_fst_all, f18_fst_all$pop_pair=="NR.SR")
+
+signif_TENR <- subset(f18_TENR, signif_level=="FDR")
+signif_TESR <- subset(f18_TESR, signif_level=="FDR")
+signif_NRSR <- subset(f18_NRSR, signif_level=="FDR")
+
+signif_TENR <- as.data.frame(signif_TENR)
+signif_TESR <- as.data.frame(signif_TESR)
+signif_NRSR <- as.data.frame(signif_NRSR)
+
+rownames(signif_TENR) <- paste0(signif_TENR$contig, signif_TENR$pos)
+rownames(signif_TESR) <- paste0(signif_TESR$contig, signif_TESR$pos)
+rownames(signif_NRSR) <- paste0(signif_NRSR$contig, signif_NRSR$pos)
+
+# Fall 2018 overalp among pops
+myCol <- brewer.pal(3, "Pastel2")
+
+?venn.diagram()
+venn.diagram(
+        x = list(rownames(signif_TENR), rownames(signif_TESR), rownames(signif_NRSR)),
+        category.names = c("TE vs NOC" , "TE vs SOC " , "NOC vs SOC"),
+        filename = 'F18_Fst_10-2.png',
+        output=TRUE,
+        
+        # Output features
+        imagetype="png" ,
+        height = 480 , 
+        width = 480 , 
+        resolution = 300,
+        compression = "lzw",
+        
+        # Circles
+        lwd = 2,
+        lty = 'blank',
+        fill = myCol,
+        
+        # Numbers
+        cex = .6,
+        fontface = "bold",
+        fontfamily = "sans",
+        
+        # Set names
+        cat.cex = 0.6,
+        cat.fontface = "bold",
+        cat.default.pos = "outer",
+        cat.pos = c(-20, 20, 180),
+        cat.dist = c(0.01, 0.01, 0.01),
+        cat.fontfamily = "sans",
+        rotation = 1
+)
+
+```
+Fall 2019 Venn Diagram 
+```{R}
+# "outlier" based on top 0.01% (~top 100-150)
+# venn diagram
+library(VennDiagram)
+f19_TENR <- subset(f19_fst_all, f19_fst_all$pop_pair=="TE.NR.fst")
+f19_TESR <- subset(f19_fst_all, f19_fst_all$pop_pair=="TE.SR.fst")
+f19_NRSR <- subset(f19_fst_all, f19_fst_all$pop_pair=="NR.SR.fst")
+
+signif_TENR <- subset(f19_TENR, signif_level=="FDR")
+signif_TESR <- subset(f19_TESR, signif_level=="FDR")
+signif_NRSR <- subset(f19_NRSR, signif_level=="FDR")
+
+signif_TENR <- as.data.frame(signif_TENR)
+signif_TESR <- as.data.frame(signif_TESR)
+signif_NRSR <- as.data.frame(signif_NRSR)
+
+rownames(signif_TENR) <- paste0(signif_TENR$contig, signif_TENR$pos)
+rownames(signif_TESR) <- paste0(signif_TESR$contig, signif_TESR$pos)
+rownames(signif_NRSR) <- paste0(signif_NRSR$contig, signif_NRSR$pos)
+
+# Fall 2018 overalp among pops
+myCol <- brewer.pal(3, "Pastel2")
+
+venn.diagram(
+        x = list(rownames(signif_TENR), rownames(signif_TESR), rownames(signif_NRSR)),
+        category.names = c("TE vs NOC" , "TE vs SOC " , "NOC vs SOC"),
+        filename = 'F19_Fst_10-2.png',
+        output=TRUE,
+        
+        # Output features
+        imagetype="png" ,
+        height = 480 , 
+        width = 480 , 
+        resolution = 300,
+        compression = "lzw",
+        
+        # Circles
+        lwd = 2,
+        lty = 'blank',
+        fill = myCol,
+        
+        # Numbers
+        cex = .6,
+        fontface = "bold",
+        fontfamily = "sans",
+        
+        # Set names
+        cat.cex = 0.6,
+        cat.fontface = "bold",
+        cat.default.pos = "outer",
+        cat.pos = c(-20, 20, 180),
+        cat.dist = c(0.01, 0.01, 0.01),
+        cat.fontfamily = "sans",
+        rotation = 1
+)
+
+```
+
+Fall 2020 Venn Diagram
+```{R}
+# "outlier" based on top 0.01% (~top 100-150)
+# venn diagram
+library(VennDiagram)
+
+F20_TENR <- subset(F20_fst_all, F20_fst_all$pop_pair=="TE.NR.fst")
+F20_TESR <- subset(F20_fst_all, F20_fst_all$pop_pair=="TE.SR.fst")
+F20_NRSR <- subset(F20_fst_all, F20_fst_all$pop_pair=="NR.SR.fst")
+
+signif_TENR <- subset(F20_TENR, signif_level=="FDR")
+signif_TESR <- subset(F20_TESR, signif_level=="FDR")
+signif_NRSR <- subset(F20_NRSR, signif_level=="FDR")
+
+rownames(signif_TENR) <- paste0(signif_TENR$contig, signif_TENR$pos)
+rownames(signif_TESR) <- paste0(signif_TESR$contig, signif_TESR$pos)
+rownames(signif_NRSR) <- paste0(signif_NRSR$contig, signif_NRSR$pos)
+
+# Fall 2018 overalp among pops
+myCol <- brewer.pal(3, "Pastel2")
+
+venn.diagram(
+        x = list(rownames(signif_TENR), rownames(signif_TESR), rownames(signif_NRSR)),
+        category.names = c("TE vs NOC" , "TE vs SOC " , "NOC vs SOC"),
+        filename = 'F20_Fst_10-2.png',
+        output=TRUE,
+        
+        # Output features
+        imagetype="png" ,
+        height = 480 , 
+        width = 480 , 
+        resolution = 300,
+        compression = "lzw",
+        
+        # Circles
+        lwd = 2,
+        lty = 'blank',
+        fill = myCol,
+        
+        # Numbers
+        cex = .6,
+        fontface = "bold",
+        fontfamily = "sans",
+        
+        # Set names
+        cat.cex = 0.6,
+        cat.fontface = "bold",
+        cat.default.pos = "outer",
+        cat.pos = c(-20, 20, 180),
+        cat.dist = c(0.01, 0.01, 0.01),
+        cat.fontfamily = "sans",
+        rotation = 1
+)
+
+```
+Venns for SNPs on contigs (excluding unplaced scaffolds)
+```{R}
+# "outlier" based on top 0.01% (~top 100-150)
+# venn diagram
+library(RColorBrewer)
+library(VennDiagram)
+f18_fst_contigs <- subset(f18_fst_all, f18_fst_all$contig %in% contigs)
+
+f18_TENR <- subset(f18_fst_contigs, f18_fst_contigs$pop_pair=="TE.NR")
+f18_TESR <- subset(f18_fst_contigs, f18_fst_contigs$pop_pair=="TE.SR")
+f18_NRSR <- subset(f18_fst_contigs, f18_fst_contigs$pop_pair=="NR.SR")
+
+signif_TENR <- subset(f18_TENR, signif_level=="FDR")
+signif_TESR <- subset(f18_TESR, signif_level=="FDR")
+signif_NRSR <- subset(f18_NRSR, signif_level=="FDR")
+
+signif_TENR <- as.data.frame(signif_TENR)
+signif_TESR <- as.data.frame(signif_TESR)
+signif_NRSR <- as.data.frame(signif_NRSR)
+
+rownames(signif_TENR) <- paste0(signif_TENR$contig, signif_TENR$pos)
+rownames(signif_TESR) <- paste0(signif_TESR$contig, signif_TESR$pos)
+rownames(signif_NRSR) <- paste0(signif_NRSR$contig, signif_NRSR$pos)
+
+# Fall 2018 overalp among pops
+myCol <- brewer.pal(3, "Pastel2")
+
+venn.diagram(
+        x = list(rownames(signif_TENR), rownames(signif_TESR), rownames(signif_NRSR)),
+        category.names = c("TE vs NOC" , "TE vs SOC " , "NOC vs SOC"),
+        filename = 'F18_Fst_10-2_contigs_only.png',
+        output=TRUE,
+        
+        # Output features
+        imagetype="png" ,
+        height = 480 , 
+        width = 480 , 
+        resolution = 300,
+        compression = "lzw",
+        
+        # Circles
+        lwd = 2,
+        lty = 'blank',
+        fill = myCol,
+        
+        # Numbers
+        cex = .6,
+        fontface = "bold",
+        fontfamily = "sans",
+        
+        # Set names
+        cat.cex = 0.6,
+        cat.fontface = "bold",
+        cat.default.pos = "outer",
+        cat.pos = c(-20, 20, 180),
+        cat.dist = c(0.01, 0.01, 0.01),
+        cat.fontfamily = "sans",
+        rotation = 1
+)
+
+```
+Fall 2019 Venn Diagram
+```{R}
+# "outlier" based on top 0.01% (~top 100-150)
+# venn diagram
+library(VennDiagram)
+f19_fst_contigs <- subset(f19_fst_all, f19_fst_all$contig %in% contigs)
+
+f19_TENR <- subset(f19_fst_contigs, f19_fst_contigs$pop_pair=="TE.NR.fst")
+f19_TESR <- subset(f19_fst_contigs, f19_fst_contigs$pop_pair=="TE.SR.fst")
+f19_NRSR <- subset(f19_fst_contigs, f19_fst_contigs$pop_pair=="NR.SR.fst")
+
+signif_TENR <- subset(f19_TENR, signif_level=="FDR")
+signif_TESR <- subset(f19_TESR, signif_level=="FDR")
+signif_NRSR <- subset(f19_NRSR, signif_level=="FDR")
+
+signif_TENR <- as.data.frame(signif_TENR)
+signif_TESR <- as.data.frame(signif_TESR)
+signif_NRSR <- as.data.frame(signif_NRSR)
+
+rownames(signif_TENR) <- paste0(signif_TENR$contig, signif_TENR$pos)
+rownames(signif_TESR) <- paste0(signif_TESR$contig, signif_TESR$pos)
+rownames(signif_NRSR) <- paste0(signif_NRSR$contig, signif_NRSR$pos)
+
+# Fall 2018 overalp among pops
+myCol <- brewer.pal(3, "Pastel2")
+
+venn.diagram(
+        x = list(rownames(signif_TENR), rownames(signif_TESR), rownames(signif_NRSR)),
+        category.names = c("TE vs NOC" , "TE vs SOC " , "NOC vs SOC"),
+        filename = 'F19_Fst_10-2_contigs_only.png',
+        output=TRUE,
+        
+        # Output features
+        imagetype="png" ,
+        height = 480 , 
+        width = 480 , 
+        resolution = 300,
+        compression = "lzw",
+        
+        # Circles
+        lwd = 2,
+        lty = 'blank',
+        fill = myCol,
+        
+        # Numbers
+        cex = .6,
+        fontface = "bold",
+        fontfamily = "sans",
+        
+        # Set names
+        cat.cex = 0.6,
+        cat.fontface = "bold",
+        cat.default.pos = "outer",
+        cat.pos = c(-20, 20, 180),
+        cat.dist = c(0.01, 0.01, 0.01),
+        cat.fontfamily = "sans",
+        rotation = 1
+)
+
+```
+
+Fall 2020 Venn Diagram
+```{R}
+# "outlier" based on top 0.01% (~top 100-150)
+# venn diagram
+library(VennDiagram)
+F20_fst_contigs <- subset(F20_fst_all, F20_fst_all$contig %in% contigs)
+
+F20_TENR <- subset(F20_fst_contigs, F20_fst_contigs$pop_pair=="TE.NR.fst")
+F20_TESR <- subset(F20_fst_contigs, F20_fst_contigs$pop_pair=="TE.SR.fst")
+F20_NRSR <- subset(F20_fst_contigs, F20_fst_contigs$pop_pair=="NR.SR.fst")
+
+signif_TENR <- subset(F20_TENR, signif_level=="FDR")
+signif_TESR <- subset(F20_TESR, signif_level=="FDR")
+signif_NRSR <- subset(F20_NRSR, signif_level=="FDR")
+
+rownames(signif_TENR) <- paste0(signif_TENR$contig, signif_TENR$pos)
+rownames(signif_TESR) <- paste0(signif_TESR$contig, signif_TESR$pos)
+rownames(signif_NRSR) <- paste0(signif_NRSR$contig, signif_NRSR$pos)
+
+# Fall 2018 overalp among pops
+myCol <- brewer.pal(3, "Pastel2")
+
+venn.diagram(
+        x = list(rownames(signif_TENR), rownames(signif_TESR), rownames(signif_NRSR)),
+        category.names = c("TE vs NOC" , "TE vs SOC " , "NOC vs SOC"),
+        filename = 'F20_Fst_10-2_contigs_only.png',
+        output=TRUE,
+        
+        # Output features
+        imagetype="png" ,
+        height = 480 , 
+        width = 480 , 
+        resolution = 300,
+        compression = "lzw",
+        
+        # Circles
+        lwd = 2,
+        lty = 'blank',
+        fill = myCol,
+        
+        # Numbers
+        cex = .6,
+        fontface = "bold",
+        fontfamily = "sans",
+        
+        # Set names
+        cat.cex = 0.6,
+        cat.fontface = "bold",
+        cat.default.pos = "outer",
+        cat.pos = c(-20, 20, 180),
+        cat.dist = c(0.01, 0.01, 0.01),
+        cat.fontfamily = "sans",
+        rotation = 1
+)
+
+```
+
+
+Relationship between chromosome size and # SNPs
+```{R}
+# SNPs per chromosome
+chr_data <- read.csv("~/Desktop/wg_analysis/All/WGS_snps_per_chr.csv")
+
+ggplot(data=chr_data, aes(x=chromosome, y=num_snps)) +
+  geom_bar(stat="identity", fill="lightblue") +
+  labs(x="Chromosome", y="Number of SNPs") +
+  theme_bw()
+
+chr_data2 <- subset(chr_data, chr_data$chromosome!="0")
+ggplot(data=chr_data2, aes(x=perc_genome, y=perc_variants)) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  labs(x="Proportion of Genome per Chromosome", y="Percent of Total Variants on Chromosome") +
+  theme_bw()
+
+summary(lm(chr_data$perc_variants~chr_data$perc_genome))
+```
+
+PCA - Pairwise comparison among timepoints
+```{R}
+# read in metadata
+wgs_all_bams <- read.csv("~/Desktop/wg_analysis/bams.list.txt", sep="\t", header=FALSE)
+age_dat <- read.csv("~/Desktop/wg_analysis/OCNJAges.csv")
+wgs_meta <- left_join(wgs_meta, age_dat, by="fish_id")
+OCNJ_depth_merge <- OCNJ_depth
+OCNJ_depth_merge$unique_id <- rownames(OCNJ_depth_merge)
+
+# Read in all PCA files in the specified directory 
+file_list <- list.files(path="~/Desktop/wg_analysis/All/pcangsd_time")
+file_list
+# need to be in specific order to line up with file list
+bams_lists <- c("F18_F19_bams.list","F18_F19_bams_kept.list","F18_F20_bams.list","F18_F20_bams_kept.list", "F19_F20_bams.list","F19_F20_bams_kept.list")
+timepoint_pca <- c()
+timepoint_vals <- c()
+
+for (i in 1:length(file_list)){
+  print(i)
+  setwd("~/Desktop/wg_analysis/All/pcangsd_time")
+  temp_data <- read.table(file_list[i]) #each file will be read in
+  temp_data <- as.data.frame(temp_data)
+  temp_eigen <- eigen(temp_data) # get cov matrix
+  temp_eigenvals <- temp_eigen$values # save eigenvalues
+  temp_eigenvecs <- as.data.frame(temp_eigen$vectors) # save eigenvectors
+  temp_eigenvecs <- temp_eigenvecs[,1:20]
+  setwd("~/Desktop/wg_analysis/All/bams_lists_time")
+  bam_list <- read.csv(bams_lists[i], sep="\t", header=FALSE)
+  temp_eigenvecs$file_prefix <- gsub("_final.bam", "" ,bam_list$V1) # add sample IDs from BAM list in order
+  wgs_temp <- subset(wgs_meta, wgs_meta$file_prefix %in% temp_eigenvecs$file_prefix)
+  eigen_merged <- left_join(temp_eigenvecs, wgs_temp, by="file_prefix")
+  eigen_merged <- subset(eigen_merged, eigen_merged$population!="NA")
+  eigen_merged <- subset(eigen_merged, eigen_merged$population!="UN")
+  eigen_merged <- left_join(eigen_merged, OCNJ_depth_merge, by="unique_id")
+  eigen_merged$time_pair <- sapply(strsplit(gsub(".txt", "", file_list[i]), "_"), function(x){x[3]}) #create a new column that indicates which file each row of data came from
+  temp_eigenvals$time_pair <- sapply(strsplit(gsub(".txt", "", file_list[i]), "_"), function(x){x[3]})
+  timepoint_pca <- rbind(timepoint_pca, eigen_merged) #for each iteration, bind the new data to the building dataset
+  timepoint_vals <- rbind(timepoint_vals, temp_eigenvals)
+}
+
+var_list <- timepoint_pca[,c(23:26,30,32)]
+
+for (i in var_list) { 
+  print(ggplot(data=timepoint_pca) +
+      facet_wrap(~time_pair) +
+      geom_point(aes(x=V1, y=V2, col=as.factor(i))) +
+  labs(title="PCAngsd Timepoint Comparison") +
+  stat_ellipse(aes(x=V1, y=V2, col=as.factor(i))) +
+  theme_bw()
+  ) 
+}
+```
+Fst within populations across timepoints
+```{R}
+# F18 vs. F19, F18 vs. F20, and F19 vs. F20
+setwd("~/Desktop/wg_analysis/All/timepoint_fsts")
+file_list <- list.files(path="~/Desktop/wg_analysis/All/timepoint_fsts")
+time_fst_all <- data.frame()
+
+#had to specify columns to get rid of the total column
+for (i in 1:length(file_list)){
+  temp_data <- read_tsv(file_list[i]) #each file will be read in
+  colnames(temp_data) <- c("contig","pos","a","b","sum","fst")
+    temp_data$pop <- sapply(strsplit(gsub(".fst.txt", "", file_list[i]), "_"), function(x){x[1]}) #create a new column that indicates which pop file each row of data came from
+  temp_data$timepoints <- sapply(strsplit(gsub(".fst.txt", "", file_list[i]), "'.'"), function(x){x[1]}) #create a new column that indicates which timepoint comparison each row of data came from
+  time_fst_all <- rbind(time_fst_all, temp_data) #for each iteration, bind the new data to the building dataset
+}
+
+time_fst_all$fdr_pval <- p.adjust(time_fst_all$pval, method ="fdr", n = length(time_fst_all$pval))
+time_fst_all$bonf_pval <- p.adjust(time_fst_all$pval, method ="bonferroni", n = length(time_fst_all$pval))
+
+
+time_fst_all <- time_fst_all %>% mutate(., signif_level = ifelse(pval < 0.05, "UNCOR",
+                                     ifelse(fdr_pval <0.05, "FDR",
+                                            ifelse(bonf_pval <0.05, "BONF", "NS"))))
+
+cutoff_pval=-log10(0.05)
+
+# pick out contigs to plot
+contigs <- c("NC_046361.1","NC_046362.1","NC_046363.1","NC_046364.1","NC_046365.1","NC_046366.1",   "NC_046367.1","NC_046368.1","NC_046369.1","NC_046370.1","NC_046371.1","NC_046372.1","NC_046373.1"   ,"NC_046374.1","NC_046375.1","NC_046376.1","NC_046377.1","NC_046378.1","NC_046379.1","NC_046380.1"  ,"NC_046381.1","NC_046382.1","NC_046383.1","NC_046384.1" )
+
+for (i in contigs[1:24]) { 
+  print(ggplot(data=subset(time_fst_all, time_fst_all$contig==i)) +
+    facet_wrap(~timepoints) +
+    geom_point(aes(x=pos, y=-log10(pval)), pch=1, alpha=0.5, size=2) +
+    geom_hline(yintercept=cutoff_pval, linetype="dashed", color="red") +
+    labs(x="Chromosomal Position", y="-log10(pval)", main="Among Fall Timepoints") +
+    theme_bw()
+  ) 
+}
+
+#write.csv(time_fst_all, "~/Desktop/wg_analysis/All/timepoint_fsts/timepoint_fst_all.csv")
+```
+
+Temporal Venn Diagrams
+```{R}
+# "outlier" based on top 0.01% (~top 100-150)
+# venn diagram
+library(VennDiagram)
+time_fst_contigs <- subset(time_fst_all, time_fst_all$contig %in% contigs)
+
+NR_F18vF19 <- subset(time_fst_contigs, time_fst_contigs$timepoints=="NR_F18.NR_F19")
+TE_F18vF19 <- subset(time_fst_contigs, time_fst_contigs$timepoints=="TE_F18.TE_F19")
+SR_F18vF19 <- subset(time_fst_contigs, time_fst_contigs$timepoints=="SR_F18.SR_F19")
+
+NR_F19vF20 <- subset(time_fst_contigs, time_fst_contigs$timepoints=="NR_F19.NR_F20")
+TE_F19vF20 <- subset(time_fst_contigs, time_fst_contigs$timepoints=="TE_F19.TE_F20")
+SR_F19vF20 <- subset(time_fst_contigs, time_fst_contigs$timepoints=="SR_F19.SR_F20")
+
+NR_F18vF20 <- subset(time_fst_contigs, time_fst_contigs$timepoints=="NR_F18.NR_F20")
+TE_F18vF20 <- subset(time_fst_contigs, time_fst_contigs$timepoints=="TE_F18.TE_F20")
+SR_F18vF20 <- subset(time_fst_contigs, time_fst_contigs$timepoints=="SR_F18.SR_F20")
+
+signif_NR_F18vF19 <- subset(NR_F18vF19, signif_level=="FDR")
+signif_TE_F18vF19 <- subset(TE_F18vF19, signif_level=="FDR")
+signif_SR_F18vF19 <- subset(SR_F18vF19, signif_level=="FDR")
+
+signif_NR_F19vF20 <- subset(NR_F19vF20, signif_level=="FDR")
+signif_TE_F19vF20 <- subset(TE_F19vF20, signif_level=="FDR")
+signif_SR_F19vF20 <- subset(SR_F19vF20, signif_level=="FDR")
+
+signif_NR_F18vF20 <- subset(NR_F18vF20, signif_level=="FDR")
+signif_TE_F18vF20 <- subset(TE_F18vF20, signif_level=="FDR")
+signif_SR_F18vF20 <- subset(SR_F18vF20, signif_level=="FDR")
+
+rownames(signif_NR_F18vF19) <- paste0(signif_NR_F18vF19$contig, signif_NR_F18vF19$pos)
+rownames(signif_TE_F18vF19) <- paste0(signif_TE_F18vF19$contig, signif_TE_F18vF19$pos)
+rownames(signif_SR_F18vF19) <- paste0(signif_SR_F18vF19$contig, signif_SR_F18vF19$pos)
+
+rownames(signif_NR_F19vF20) <- paste0(signif_NR_F19vF20$contig, signif_NR_F19vF20$pos)
+rownames(signif_TE_F19vF20) <- paste0(signif_TE_F19vF20$contig, signif_TE_F19vF20$pos)
+rownames(signif_SR_F19vF20) <- paste0(signif_SR_F19vF20$contig, signif_SR_F19vF20$pos)
+
+rownames(signif_NR_F18vF20) <- paste0(signif_NR_F18vF20$contig, signif_NR_F18vF20$pos)
+rownames(signif_TE_F18vF20) <- paste0(signif_TE_F18vF20$contig, signif_TE_F18vF20$pos)
+rownames(signif_SR_F18vF20) <- paste0(signif_SR_F18vF20$contig, signif_SR_F18vF20$pos)
+```
+
+```{R}
+# TE overlap among pairwise timepoints
+myCol <- brewer.pal(3, "Pastel1")
+
+venn.diagram(
+        x = list(rownames(signif_TE_F18vF19), rownames(signif_TE_F19vF20), rownames(signif_TE_F18vF20)),
+        category.names = c("TE F18vF19" , "TE F19vF20 " , "TE F18vF20"),
+        filename = 'TE_time_Fst_10-2_contigs_only.png',
+        output=TRUE,
+        
+        # Output features
+        imagetype="png" ,
+        height = 480 , 
+        width = 480 , 
+        resolution = 300,
+        compression = "lzw",
+        
+        # Circles
+        lwd = 2,
+        lty = 'blank',
+        fill = myCol,
+        
+        # Numbers
+        cex = .6,
+        fontface = "bold",
+        fontfamily = "sans",
+        
+        # Set names
+        cat.cex = 0.6,
+        cat.fontface = "bold",
+        cat.default.pos = "outer",
+        cat.pos = c(-20, 20, 180),
+        cat.dist = c(0.01, 0.01, 0.01),
+        cat.fontfamily = "sans",
+        rotation = 1
+)
+
+venn.diagram(
+        x = list(rownames(signif_NR_F18vF19), rownames(signif_NR_F19vF20), rownames(signif_NR_F18vF20)),
+        category.names = c("NR F18vF19" , "NR F19vF20 " , "NR F18vF20"),
+        filename = 'NR_time_Fst_10-2_contigs_only.png',
+        output=TRUE,
+        
+        # Output features
+        imagetype="png" ,
+        height = 480 , 
+        width = 480 , 
+        resolution = 300,
+        compression = "lzw",
+        
+        # Circles
+        lwd = 2,
+        lty = 'blank',
+        fill = myCol,
+        
+        # Numbers
+        cex = .6,
+        fontface = "bold",
+        fontfamily = "sans",
+        
+        # Set names
+        cat.cex = 0.6,
+        cat.fontface = "bold",
+        cat.default.pos = "outer",
+        cat.pos = c(-20, 20, 180),
+        cat.dist = c(0.01, 0.01, 0.01),
+        cat.fontfamily = "sans",
+        rotation = 1
+)
+
+venn.diagram(
+        x = list(rownames(signif_SR_F18vF19), rownames(signif_SR_F19vF20), rownames(signif_SR_F18vF20)),
+        category.names = c("SR F18vF19" , "SR F19vF20 " , "SR F18vF20"),
+        filename = 'SR_time_Fst_10-2_contigs_only.png',
+        output=TRUE,
+        
+        # Output features
+        imagetype="png" ,
+        height = 480 , 
+        width = 480 , 
+        resolution = 300,
+        compression = "lzw",
+        
+        # Circles
+        lwd = 2,
+        lty = 'blank',
+        fill = myCol,
+        
+        # Numbers
+        cex = .6,
+        fontface = "bold",
+        fontfamily = "sans",
+        
+        # Set names
+        cat.cex = 0.6,
+        cat.fontface = "bold",
+        cat.default.pos = "outer",
+        cat.pos = c(-20, 20, 180),
+        cat.dist = c(0.01, 0.01, 0.01),
+        cat.fontfamily = "sans",
+        rotation = 1
+)
+
+```
+
+PCA - within populations
+```{R}
+# read in metadata
+wgs_all_bams <- read.csv("~/Desktop/wg_analysis/bams.list.txt", sep="\t", header=FALSE)
+age_dat <- read.csv("~/Desktop/wg_analysis/OCNJAges.csv")
+wgs_meta <- left_join(wgs_meta, age_dat, by="fish_id")
+OCNJ_depth_merge <- OCNJ_depth
+OCNJ_depth_merge$unique_id <- rownames(OCNJ_depth_merge)
+
+# Read in all PCA files in the specified directory 
+file_list <- list.files(path="~/Desktop/wg_analysis/All/pcangsd_pops")
+file_list
+# need to be in specific order to line up with file list
+bams_lists <- c("NR_all.list","SR_all.list","TE_all.list")
+timepoint_pca <- c()
+timepoint_vals <- c()
+
+for (i in 1:length(file_list)){
+  print(i)
+  setwd("~/Desktop/wg_analysis/All/pcangsd_pops")
+  temp_data <- read.table(file_list[i]) #each file will be read in
+  temp_data <- as.data.frame(temp_data)
+  temp_eigen <- eigen(temp_data) # get cov matrix
+  temp_eigenvals <- temp_eigen$values # save eigenvalues
+  temp_eigenvecs <- as.data.frame(temp_eigen$vectors) # save eigenvectors
+  temp_eigenvecs <- temp_eigenvecs[,1:20]
+  setwd("~/Desktop/wg_analysis/All/bams_lists_pops")
+  bam_list <- read.csv(bams_lists[i], sep="\t", header=FALSE)
+  temp_eigenvecs$file_prefix <- gsub("_final.bam", "" ,bam_list$V1) # add sample IDs from BAM list in order
+  wgs_temp <- subset(wgs_meta, wgs_meta$file_prefix %in% temp_eigenvecs$file_prefix)
+  eigen_merged <- left_join(temp_eigenvecs, wgs_temp, by="file_prefix")
+  eigen_merged <- subset(eigen_merged, eigen_merged$population!="NA")
+  eigen_merged <- subset(eigen_merged, eigen_merged$population!="UN")
+  eigen_merged <- left_join(eigen_merged, OCNJ_depth_merge, by="unique_id")
+  eigen_merged$time_pair <- sapply(strsplit(gsub(".txt", "", file_list[i]), "_"), function(x){x[3]}) #create a new column that indicates which file each row of data came from
+  temp_eigenvals$time_pair <- sapply(strsplit(gsub(".txt", "", file_list[i]), "_"), function(x){x[3]})
+  timepoint_pca <- rbind(timepoint_pca, eigen_merged) #for each iteration, bind the new data to the building dataset
+  timepoint_vals <- rbind(timepoint_vals, temp_eigenvals)
+}
+
+var_list <- timepoint_pca[,c(23:26,30,32)]
+
+for (i in var_list) { 
+  print(ggplot(data=timepoint_pca) +
+      facet_wrap(~time_pair) +
+      geom_point(aes(x=V1, y=V2, col=as.factor(i))) +
+  labs(title="PCAngsd Timepoint Comparison") +
+  stat_ellipse(aes(x=V1, y=V2, col=as.factor(i))) +
+  theme_bw()
+  ) 
+}
+```
+
+Global Fst Correlation Plots
+```{R}
+library(corrplot)
+# read in the corrplot data
+# Fall 2018
+df <- data.frame(NR = c(0, 0.0280,.0289),
+                 TE = c(0.0280, 0, 0.0296),
+                 SR=c(0.0289, 0.0296, 0)
+                 )
+
+rownames(df) <- c("NR", "TE", "SR")
+
+# make the corrplot
+corrplot(as.matrix(df), is.corr=FALSE, method="number", number.digits = 4, title="Fall 2018", mar=c(0,0,3,0))
+
+# Fall 2019
+df <- data.frame(NR = c(0, 0.0569, 0.0746),
+                 TE = c(0.0569, 0, 0.0361),
+                 SR=c(0.0746, 0.0361, 0)
+                 )
+
+rownames(df) <- c("NR", "TE", "SR")
+
+# make the corrplot
+corrplot(as.matrix(df), is.corr=FALSE, method="number", number.digits = 4, title="Fall 2019", mar=c(0,0,3,0))
+
+# Fall 2020
+df <- data.frame(NR = c(0, 0.0371, 0.0418),
+                 TE = c(0.0371, 0, 0.0366),
+                 SR=c(0.0418, 0.0366, 0)
+                 )
+
+rownames(df) <- c("NR", "TE", "SR")
+
+# make the corrplot
+corrplot(as.matrix(df), is.corr=FALSE, method="number", number.digits = 4, title="Fall 2020", mar=c(0,0,3,0))
+
+# NR across Fall timepoints
+df <- data.frame(NR_F18 = c(0, 0.0775, 0.0446),
+                 NR_F19 = c(0.0775, 0, 0.078),
+                 NR_F20=c(0.0446, 0.078, 0)
+                 )
+
+rownames(df) <- c("NR_F18", "NR_F19", "NR_F20")
+
+# make the corrplot
+corrplot(as.matrix(df), is.corr=FALSE, method="number", number.digits = 4, title="NR Timepoints", mar=c(0,0,3,0))
+
+# TE across Fall timepoints
+df <- data.frame(TE_F18 = c(0, 0.0351, 0.042),
+                 TE_F19 = c(0.0351, 0, 0.036),
+                 TE_F20=c(0.042, 0.036, 0)
+                 )
+
+rownames(df) <- c("TE_F18", "TE_F19", "TE_F20")
+
+# make the corrplot
+corrplot(as.matrix(df), is.corr=FALSE, method="number", number.digits = 4, title="TE Timepoints", mar=c(0,0,3,0))
+
+# SR across Fall timepoints
+df <- data.frame(SR_F18 = c(0, 0.0502, 0.0465),
+                 SR_F19 = c(0.0502, 0, 0.0551),
+                 SR_F20=c(0.0465, 0.0551, 0)
+                 )
+
+rownames(df) <- c("SR_F18", "SR_F19", "SR_F20")
+
+# make the corrplot
+corrplot(as.matrix(df), is.corr=FALSE, method="number", number.digits = 4, title="SR Timepoints", mar=c(0,0,3,0))
+```
+
+```{R}
+# https://baylab.github.io/MarineGenomics/week-9--population-structure-using-ngsadmix.html 
+# What admixture is best
+library(stringr)
+
+# Fall 2018 -- Best K=4
+data<-list.files("~/Desktop/wg_analysis/admix_results/F18_admix", pattern = ".log", full.names = T)
+bigData<-lapply(1:15, FUN = function(i) readLines(data[i]))
+foundset<-sapply(1:15, FUN= function(x) bigData[[x]][which(str_sub(bigData[[x]], 1, 1) == 'b')])
+as.numeric( sub("\\D*(\\d+).*", "\\1", foundset) )
+logs<-data.frame(K = rep(1:5, each=3))
+logs$like<-as.vector(as.numeric( sub("\\D*(\\d+).*", "\\1", foundset) ))
+tapply(logs$like, logs$K, FUN= function(x) mean(abs(x))/sd(abs(x)))
+
+# Fall 2019 -- Best K=4
+data<-list.files("~/Desktop/wg_analysis/admix_results/F19_admix", pattern = ".log", full.names = T)
+bigData<-lapply(1:15, FUN = function(i) readLines(data[i]))
+foundset<-sapply(1:15, FUN= function(x) bigData[[x]][which(str_sub(bigData[[x]], 1, 1) == 'b')])
+as.numeric( sub("\\D*(\\d+).*", "\\1", foundset) )
+logs<-data.frame(K = rep(1:5, each=3))
+logs$like<-as.vector(as.numeric( sub("\\D*(\\d+).*", "\\1", foundset) ))
+tapply(logs$like, logs$K, FUN= function(x) mean(abs(x))/sd(abs(x)))
+
+# Fall 2020 -- Best K=2
+data<-list.files("~/Desktop/wg_analysis/admix_results/F20_admix", pattern = ".log", full.names = T)
+bigData<-lapply(1:15, FUN = function(i) readLines(data[i]))
+foundset<-sapply(1:15, FUN= function(x) bigData[[x]][which(str_sub(bigData[[x]], 1, 1) == 'b')])
+as.numeric( sub("\\D*(\\d+).*", "\\1", foundset) )
+logs<-data.frame(K = rep(1:5, each=3))
+logs$like<-as.vector(as.numeric( sub("\\D*(\\d+).*", "\\1", foundset) ))
+tapply(logs$like, logs$K, FUN= function(x) mean(abs(x))/sd(abs(x)))
+
+# All -- Best K=
+data<-list.files("~/Desktop/wg_analysis/admix_results/all_admix", pattern = ".log", full.names = T)
+bigData<-lapply(1:15, FUN = function(i) readLines(data[i]))
+foundset<-sapply(1:15, FUN= function(x) bigData[[x]][which(str_sub(bigData[[x]], 1, 1) == 'b')])
+as.numeric( sub("\\D*(\\d+).*", "\\1", foundset) )
+logs<-data.frame(K = rep(1:5, each=3))
+logs$like<-as.vector(as.numeric( sub("\\D*(\\d+).*", "\\1", foundset) ))
+tapply(logs$like, logs$K, FUN= function(x) mean(abs(x))/sd(abs(x)))
+
+# Fall 2018 - best K=4
+q<-read.table("~/Desktop/wg_analysis/admix_results/F18_admix/k4.1.qopt")
+f18_meta_admix <- f18_meta[1:172, ]
+ord<-order(f18_meta_admix$population)
+
+barplot(t(q),
+        col=1:4,
+        names=f18_meta_admix$population[ord],
+        las=2,
+        space=0,
+        border=NA,
+        xlab="Individuals",
+        ylab="Admixture proportions for K=4")
+
+
+# Fall 2019 - best K=4
+q<-read.table("~/Desktop/wg_analysis/admix_results/F19_admix/k4.1.qopt")
+f19_meta_admix <- f19_meta[1:297, ]
+ord<-order(f19_meta_admix$population)
+
+barplot(t(q),
+        col=1:4,
+        names=f19_meta_admix$population[ord],
+        las=2,
+        space=0,
+        border=NA,
+        xlab="Individuals",
+        ylab="Admixture proportions for K=4")
+
+# Fall 2020 - best K=2
+q<-read.table("~/Desktop/wg_analysis/admix_results/F20_admix/k2.1.qopt")
+f20_meta_admix <- f20_meta[1:299, ]
+ord<-order(f20_meta_admix$population)
+
+barplot(t(q),
+        col=1:2,
+        names=f20_meta_admix$population[ord],
+        las=2,
+        space=0,
+        border=NA,
+        xlab="Individuals",
+        ylab="Admixture proportions for K=2")
+
+# All Samples
+q<-read.table("~/Desktop/wg_analysis/admix_results/all_admix/k4.1.qopt")
+wgs_meta_admix <- wgs_meta[1:1120, ]
+ord<-order(wgs_meta_admix$timepoint)
+barplot(t(q),
+        col=1:4,
+        names=wgs_meta_admix$timepoint[ord],
+        las=2,
+        space=0,
+        border=NA,
+        xlab="Individuals",
+        ylab="Admixture proportions for K=4")
+
+```
+
+```{R}
+# look at heterozygosity dist Fall 2018
+het_dat <- read.csv("~/Desktop/wg_analysis/All/F18_emp_fst_het.csv")
+colnames(het_dat) <- c("chromosome","position", "major", "minor", "ref", "MAF_knownEM", "pop_pair","heterozygosity")
+
+hist(het_dat$heterozygosity)
+het_dat <- subset(het_dat, het_dat$heterozygosity != "NA")
+quantile(het_dat$heterozygosity ,c(0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5,0.55,0.6,0.65,0.7,0.75,0.8,0.85,0.90,0.95))
+
+
+hist(het_dat_100$heterozygosity)
+```
+```{R}
+# look at heterozygosity dist Fall 2019
+het_dat_19 <- read.csv("~/Desktop/wg_analysis/All/F19_emp_fst_het.csv")
+colnames(het_dat_19) <- c("chromosome","position", "major", "minor", "ref", "MAF_knownEM", "pop_pair","heterozygosity")
+
+hist(het_dat_19$heterozygosity)
+het_dat_19 <- subset(het_dat_19, het_dat_19$heterozygosity != "NA")
+quantile(het_dat_19$heterozygosity ,c(0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5,0.55,0.6,0.65,0.7,0.75,0.8,0.85,0.90,0.95))
+
+```
+```{R}
+# look at heterozygosity dist Fall 2019
+het_dat_20 <- read.csv("~/Desktop/wg_analysis/All/F20_emp_fst_het.csv")
+colnames(het_dat_20) <- c("chromosome","position", "major", "minor", "ref", "MAF_knownEM", "pop_pair","heterozygosity")
+
+hist(het_dat_20$heterozygosity)
+het_dat_20 <- subset(het_dat_20, het_dat_20$heterozygosity != "NA")
+quantile(het_dat_20$heterozygosity ,c(0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5,0.55,0.6,0.65,0.7,0.75,0.8,0.85,0.90,0.95))
+
+```
+
+```{R}
+# http://www.popgen.dk/angsd/index.php/Heterozygosity 
+# population level heterozygosity
+n_het <- scan("~/Desktop/wg_analysis/pop_het_results/F20_N_sites.ml")
+n_het[2]/sum(n_het) 
+
+te_het <- scan("~/Desktop/wg_analysis/pop_het_results/F20_TE_sites.ml")
+te_het[2]/sum(te_het) 
+
+s_het <- scan("~/Desktop/wg_analysis/pop_het_results/F20_S_sites.ml")
+s_het[2]/sum(s_het) 
+
+# Fall 2018
+# F18_NR = 0.02535044
+# F18_TE = 0.02549365
+# F18_SR = 0.0280587
+
+# Fall 2019
+# F19_NR = 0.06009313
+# F19_TE = 0.03054698
+# F19_SR = 0.04247887
+
+# Fall 2020
+# F20_NR = 0.03884818
+# F20_TE = 0.03263964
+# F20_SR = 0.03897598
+```
+```{R}
+# Look at MAF change over Fall timepoints
+F18_maf <- read.csv("~/Desktop/wg_analysis/All/maf_files/F18_mafs.txt", sep="\t")
+F19_maf <- read.csv("~/Desktop/wg_analysis/All/maf_files/F19_mafs.txt", sep="\t")
+F20_maf <- read.csv("~/Desktop/wg_analysis/All/maf_files/F20_mafs.txt", sep="\t")
+
+colnames(F18_maf) <- c("chromosome","position","major","minor","ref","F18_MAF", "F18_nIND")
+colnames(F19_maf) <- c("chromosome","position","major","minor","ref","F19_MAF", "F19_nIND")
+colnames(F20_maf) <- c("chromosome","position","major","minor","ref","F20_MAF", "F20_nIND")
+
+F18_F19_maf <- left_join(F18_maf, F19_maf, by=c("chromosome","position","major","ref"))
+F18_F19_F20_maf <- left_join(F18_F19_maf, F20_maf, by=c("chromosome","position","major","ref"))
+
+# filter on within timepoint MAF
+F18_F19_F20_maf <- subset(F18_F19_F20_maf, F18_F19_F20_maf$F18_MAF>0.05 | F18_F19_F20_maf$F19_MAF > 0.05 | F18_F19_F20_maf$F20_MAF >0.05)
+
+F18_F19_F20_maf <- F18_F19_F20_maf %>% mutate(delta_18_19=F19_MAF-F18_MAF) %>%
+  mutate(delta_19_20=F20_MAF-F19_MAF) %>%
+  mutate(delta_18_20=F20_MAF-F18_MAF)
+
+head(F18_F19_F20_maf)
+
+F18_F19_F20_maf <- subset(F18_F19_F20_maf, F18_F19_F20_maf$delta_18_19!="NA" & F18_F19_F20_maf$delta_18_20!="NA" & F18_F19_F20_maf$delta_19_20!="NA")
+
+F18_F19_F20_maf <- subset(F18_F19_F20_maf, F18_F19_F20_maf$minor==F18_F19_F20_maf$minor.x & F18_F19_F20_maf$minor==F18_F19_F20_maf$minor.y)
+
+# get mean and SD
+delta_means <- c(mean(F18_F19_F20_maf$delta_18_19), mean(F18_F19_F20_maf$delta_19_20), mean(F18_F19_F20_maf$delta_18_20))
+delta_sds <- c(sd(F18_F19_F20_maf$delta_18_19), sd(F18_F19_F20_maf$delta_19_20), sd(F18_F19_F20_maf$delta_18_20))
+
+sum_dat <- cbind(delta_means, delta_sds)
+rownames(sum_dat) <- c("F18_F19", "F19_F20","F18_F20")
+
+sum_dat <- as.data.frame(sum_dat)
+sum_dat <- rownames_to_column(sum_dat, "Timepoints")
+
+ggplot(data=sum_dat, aes(x=Timepoints, y=delta_means)) +
+  geom_errorbar(aes(ymin=delta_means-delta_sds, ymax=delta_means+delta_sds)) +
+  geom_point() +
+  theme_bw()
+
+
+# look at distribution of AF changes - density plot
+ggplot(data=F18_F19_F20_maf) +
+  geom_density(aes(x=delta_18_19, color="Delta_18_19"), color="red") +
+  geom_density(aes(x=delta_18_20, color="Delta_18_20"), color="orange") +
+  geom_density(aes(x=delta_19_20, color="Delta_19_20"), color="wheat") +
+  xlab("AF change") +
+  theme_bw()
+
+ggplot(data=F18_F19_F20_maf) +
+  geom_density(aes(x=F18_MAF, color="F18_MAF"), color="green") +
+  geom_density(aes(x=F19_MAF, color="F19_MAF"), color="blue") +
+  geom_density(aes(x=F20_MAF, color="F20_MAF"), color="purple") +
+  xlab("MAF") +
+  theme_bw()
+
+# is there temporal covariance in MAF? yes up to R2 = 0.44
+summary(lm(F18_F19_F20_maf$F18_MAF~F18_F19_F20_maf$F19_MAF)) #R2 = 0.4308
+summary(lm(F18_F19_F20_maf$F19_MAF~F18_F19_F20_maf$F20_MAF)) #R2 = 0.3969
+summary(lm(F18_F19_F20_maf$F18_MAF~F18_F19_F20_maf$F20_MAF)) #R2 = 0.4415
+
+# Identify SNPs increasing or decreasing in both 2019 and 2020 compared to 2018
+F18_F19_F20_maf <- F18_F19_F20_maf %>% 
+  mutate(., concordant_change=ifelse((delta_18_19 > 0 ) | (delta_19_20 > 0), "concordant_increase",
+         ifelse((delta_18_19 < 0 ) | (delta_19_20 < 0), "concordant_decrease", "discordant")))
+
+# give all rows a unique SNP name based on chromosome and position
+F18_F19_F20_maf <- F18_F19_F20_maf %>% unite(snp, chromosome:position, remove=FALSE)
+
+# Alleles with Postive or Negative concordant change
+# ~4.86x as many SNPs have concordant increase compared to concordant decrease and ~6% as many are discordant compared to concordant decrease
+concor_increase <- subset(F18_F19_F20_maf, F18_F19_F20_maf$concordant_change == "concordant_increase")
+nrow(concor_increase) # 850812
+concor_decrease <- subset(F18_F19_F20_maf, F18_F19_F20_maf$concordant_change == "concordant_decrease")
+nrow(concor_decrease) # 175,136
+discor_change <- subset(F18_F19_F20_maf, F18_F19_F20_maf$concordant_change == "discordant")
+nrow(discor_change) # 11,330
+########################################
+# get mean and SD for SUBSETS
+# concordant increase
+delta_means <- c(mean(concor_increase$delta_18_19), mean(concor_increase$delta_19_20), mean(concor_increase$delta_18_20))
+delta_sds <- c(sd(concor_increase$delta_18_19), sd(concor_increase$delta_19_20), sd(concor_increase$delta_18_20))
+
+sum_dat <- cbind(delta_means, delta_sds)
+rownames(sum_dat) <- c("F18_F19", "F19_F20","F18_F20")
+
+sum_dat <- as.data.frame(sum_dat)
+sum_dat <- rownames_to_column(sum_dat, "Timepoints")
+
+ggplot(data=sum_dat, aes(x=Timepoints, y=delta_means)) +
+  geom_errorbar(aes(ymin=delta_means-delta_sds, ymax=delta_means+delta_sds)) +
+  geom_point() +
+  labs(title="Concordant Increasing AF") +
+  scale_x_discrete(limits = c("F18_F19", "F19_F20","F18_F20")) +
+  theme_bw()
+
+# concordant decrease
+delta_means <- c(mean(concor_decrease$delta_18_19), mean(concor_decrease$delta_19_20), mean(concor_decrease$delta_18_20))
+delta_sds <- c(sd(concor_decrease$delta_18_19), sd(concor_decrease$delta_19_20), sd(concor_decrease$delta_18_20))
+
+sum_dat <- cbind(delta_means, delta_sds)
+rownames(sum_dat) <- c("F18_F19", "F19_F20","F18_F20")
+
+sum_dat <- as.data.frame(sum_dat)
+sum_dat <- rownames_to_column(sum_dat, "Timepoints")
+
+ggplot(data=sum_dat, aes(x=Timepoints, y=delta_means)) +
+  geom_errorbar(aes(ymin=delta_means-delta_sds, ymax=delta_means+delta_sds)) +
+  geom_point() +
+  labs(title="Concordant Decreasing AF") +
+  scale_x_discrete(limits = c("F18_F19", "F19_F20","F18_F20")) +
+  theme_bw()
+
+# discordant
+delta_means <- c(mean(discor_change$delta_18_19), mean(discor_change$delta_19_20), mean(discor_change$delta_18_20))
+delta_sds <- c(sd(discor_change$delta_18_19), sd(discor_change$delta_19_20), sd(discor_change$delta_18_20))
+
+sum_dat <- cbind(delta_means, delta_sds)
+rownames(sum_dat) <- c("F18_F19", "F19_F20","F18_F20")
+
+sum_dat <- as.data.frame(sum_dat)
+sum_dat <- rownames_to_column(sum_dat, "Timepoints")
+
+ggplot(data=sum_dat, aes(x=Timepoints, y=delta_means)) +
+  geom_errorbar(aes(ymin=delta_means-delta_sds, ymax=delta_means+delta_sds)) +
+  geom_point() +
+  labs(title="Discordant AF") +
+  scale_x_discrete(limits = c("F18_F19", "F19_F20","F18_F20")) +
+  theme_bw()
+
+```
+```{R}
+# Relationship between starting (F18) MAF and concordance?
+# start 31% lower with a dif of 0.06 between average F18 MAF for concor insreasing and decreasing AFs.
+mean(concor_increase$F18_MAF) # 0.1592145
+mean(concor_decrease$F18_MAF) # 0.2315914 
+
+sd(concor_increase$F18_MAF) # 0.116675
+sd(concor_decrease$F18_MAF) # 0.1230084
+
+t.test(concor_increase$F18_MAF, concor_decrease$F18_MAF) #p-value < 2.2e-16
+
+# concordant increase
+maf_means <- c(mean(concor_increase$F18_MAF), mean(concor_increase$F19_MAF), mean(concor_increase$F20_MAF))
+maf_sds <- c(sd(concor_increase$F18_MAF), mean(concor_increase$F19_MAF), mean(concor_increase$F20_MAF))
+
+sum_maf <- cbind(maf_means, maf_sds)
+rownames(sum_maf) <- c("F18_MAF", "F19_MAF","F20_MAF")
+
+sum_maf <- as.data.frame(sum_maf)
+sum_maf <- rownames_to_column(sum_maf, "Timepoints")
+
+ggplot(data=sum_maf, aes(x=Timepoints, y=maf_means)) +
+  geom_errorbar(aes(ymin=maf_means-maf_sds, ymax=maf_means+maf_sds)) +
+  geom_point() +
+  labs(title="Concordant Increasing AF") +
+  theme_bw()
+
+# concordant decrease
+maf_means <- c(mean(concor_decrease$F18_MAF), mean(concor_decrease$F19_MAF), mean(concor_decrease$F20_MAF))
+maf_sds <- c(sd(concor_decrease$F18_MAF), mean(concor_decrease$F19_MAF), mean(concor_decrease$F20_MAF))
+
+sum_maf <- cbind(maf_means, maf_sds)
+rownames(sum_maf) <- c("F18_MAF", "F19_MAF","F20_MAF")
+
+sum_maf <- as.data.frame(sum_maf)
+sum_maf <- rownames_to_column(sum_maf, "Timepoints")
+
+ggplot(data=sum_maf, aes(x=Timepoints, y=maf_means)) +
+  geom_errorbar(aes(ymin=maf_means-maf_sds, ymax=maf_means+maf_sds)) +
+  geom_point() +
+  labs(title="Concordant Decreasing AF") +
+  theme_bw()
+```
+
+```{R}
+# REPEAT BUT WITH F18, F19, F20 highest coverage samples (subsetted timepoints)
+# Look at MAF change over Fall timepoints
+F18_maf <- read.csv("~/Desktop/wg_analysis/All/maf_files/F18_HC_maf.txt", sep="\t")
+F19_maf <- read.csv("~/Desktop/wg_analysis/All/maf_files/F19_HC_maf.txt", sep="\t")
+F20_maf <- read.csv("~/Desktop/wg_analysis/All/maf_files/F20_HC_maf.txt", sep="\t")
+
+
+colnames(F18_maf) <- c("chromosome","position","major","minor","ref","F18_MAF", "F18_nIND")
+colnames(F19_maf) <- c("chromosome","position","major","minor","ref","F19_MAF", "F19_nIND")
+colnames(F20_maf) <- c("chromosome","position","major","minor","ref","F20_MAF", "F20_nIND")
+
+F18_F19_maf <- left_join(F18_maf, F19_maf, by=c("chromosome","position","major","ref"))
+F18_F19_F20_maf <- left_join(F18_F19_maf, F20_maf, by=c("chromosome","position","major","ref"))
+
+# filter on within timepoint MAF
+F18_F19_F20_maf <- subset(F18_F19_F20_maf, F18_F19_F20_maf$F18_MAF>0.05 | F18_F19_F20_maf$F19_MAF > 0.05 | F18_F19_F20_maf$F20_MAF >0.05)
+
+F18_F19_F20_maf <- F18_F19_F20_maf %>% mutate(delta_18_19=F19_MAF-F18_MAF) %>%
+  mutate(delta_19_20=F20_MAF-F19_MAF) %>%
+  mutate(delta_18_20=F20_MAF-F18_MAF)
+
+head(F18_F19_F20_maf)
+
+F18_F19_F20_maf <- subset(F18_F19_F20_maf, F18_F19_F20_maf$delta_18_19!="NA" & F18_F19_F20_maf$delta_18_20!="NA" & F18_F19_F20_maf$delta_19_20!="NA")
+
+F18_F19_F20_maf <- subset(F18_F19_F20_maf, F18_F19_F20_maf$minor==F18_F19_F20_maf$minor.x & F18_F19_F20_maf$minor==F18_F19_F20_maf$minor.y)
+
+# get mean and SD
+delta_means <- c(mean(F18_F19_F20_maf$delta_18_19), mean(F18_F19_F20_maf$delta_19_20), mean(F18_F19_F20_maf$delta_18_20))
+delta_sds <- c(sd(F18_F19_F20_maf$delta_18_19), sd(F18_F19_F20_maf$delta_19_20), sd(F18_F19_F20_maf$delta_18_20))
+
+sum_dat <- cbind(delta_means, delta_sds)
+rownames(sum_dat) <- c("F18_F19", "F19_F20","F18_F20")
+
+sum_dat <- as.data.frame(sum_dat)
+sum_dat <- rownames_to_column(sum_dat, "Timepoints")
+
+ggplot(data=sum_dat, aes(x=Timepoints, y=delta_means)) +
+  geom_errorbar(aes(ymin=delta_means-delta_sds, ymax=delta_means+delta_sds)) +
+  geom_point() +
+  theme_bw()
+
+
+# look at distribution of AF changes - density plot
+ggplot(data=F18_F19_F20_maf) +
+  geom_density(aes(x=delta_18_19, color="Delta_18_19"), color="red") +
+  geom_density(aes(x=delta_18_20, color="Delta_18_20"), color="orange") +
+  geom_density(aes(x=delta_19_20, color="Delta_19_20"), color="wheat") +
+  xlab("AF change") +
+  theme_bw()
+
+ggplot(data=F18_F19_F20_maf) +
+  geom_density(aes(x=F18_MAF, color="F18_MAF"), color="green") +
+  geom_density(aes(x=F19_MAF, color="F19_MAF"), color="blue") +
+  geom_density(aes(x=F20_MAF, color="F20_MAF"), color="purple") +
+  xlab("MAF") +
+  theme_bw()
+
+# is there temporal covariance in MAF? yes up to R2 = 0.44
+summary(lm(F18_F19_F20_maf$F18_MAF~F18_F19_F20_maf$F19_MAF)) #R2 = 0.4308
+summary(lm(F18_F19_F20_maf$F19_MAF~F18_F19_F20_maf$F20_MAF)) #R2 = 0.3969
+summary(lm(F18_F19_F20_maf$F18_MAF~F18_F19_F20_maf$F20_MAF)) #R2 = 0.4415
+
+# Identify SNPs increasing or decreasing in both 2019 and 2020 compared to 2018
+F18_F19_F20_maf <- F18_F19_F20_maf %>% 
+  mutate(., concordant_change=ifelse((delta_18_19 > 0 ) | (delta_19_20 > 0), "concordant_increase",
+         ifelse((delta_18_19 < 0 ) | (delta_19_20 < 0), "concordant_decrease", "discordant")))
+
+# give all rows a unique SNP name based on chromosome and position
+F18_F19_F20_maf <- F18_F19_F20_maf %>% unite(snp, chromosome:position, remove=FALSE)
+
+# Alleles with Postive or Negative concordant change
+# ~4.86x as many SNPs have concordant increase compared to concordant decrease and ~6% as many are discordant compared to concordant decrease
+concor_increase <- subset(F18_F19_F20_maf, F18_F19_F20_maf$concordant_change == "concordant_increase")
+nrow(concor_increase) # 850812
+concor_decrease <- subset(F18_F19_F20_maf, F18_F19_F20_maf$concordant_change == "concordant_decrease")
+nrow(concor_decrease) # 175,136
+discor_change <- subset(F18_F19_F20_maf, F18_F19_F20_maf$concordant_change == "discordant")
+nrow(discor_change) # 11,330
+########################################
+# get mean and SD for SUBSETS
+# concordant increase
+delta_means <- c(mean(concor_increase$delta_18_19), mean(concor_increase$delta_19_20), mean(concor_increase$delta_18_20))
+delta_sds <- c(sd(concor_increase$delta_18_19), sd(concor_increase$delta_19_20), sd(concor_increase$delta_18_20))
+
+sum_dat <- cbind(delta_means, delta_sds)
+rownames(sum_dat) <- c("F18_F19", "F19_F20","F18_F20")
+
+sum_dat <- as.data.frame(sum_dat)
+sum_dat <- rownames_to_column(sum_dat, "Timepoints")
+
+ggplot(data=sum_dat, aes(x=Timepoints, y=delta_means)) +
+  geom_errorbar(aes(ymin=delta_means-delta_sds, ymax=delta_means+delta_sds)) +
+  geom_point() +
+  labs(title="Concordant Increasing AF") +
+  scale_x_discrete(limits = c("F18_F19", "F19_F20","F18_F20")) +
+  theme_bw()
+
+# concordant decrease
+delta_means <- c(mean(concor_decrease$delta_18_19), mean(concor_decrease$delta_19_20), mean(concor_decrease$delta_18_20))
+delta_sds <- c(sd(concor_decrease$delta_18_19), sd(concor_decrease$delta_19_20), sd(concor_decrease$delta_18_20))
+
+sum_dat <- cbind(delta_means, delta_sds)
+rownames(sum_dat) <- c("F18_F19", "F19_F20","F18_F20")
+
+sum_dat <- as.data.frame(sum_dat)
+sum_dat <- rownames_to_column(sum_dat, "Timepoints")
+
+ggplot(data=sum_dat, aes(x=Timepoints, y=delta_means)) +
+  geom_errorbar(aes(ymin=delta_means-delta_sds, ymax=delta_means+delta_sds)) +
+  geom_point() +
+  labs(title="Concordant Decreasing AF") +
+  scale_x_discrete(limits = c("F18_F19", "F19_F20","F18_F20")) +
+  theme_bw()
+
+# discordant
+delta_means <- c(mean(discor_change$delta_18_19), mean(discor_change$delta_19_20), mean(discor_change$delta_18_20))
+delta_sds <- c(sd(discor_change$delta_18_19), sd(discor_change$delta_19_20), sd(discor_change$delta_18_20))
+
+sum_dat <- cbind(delta_means, delta_sds)
+rownames(sum_dat) <- c("F18_F19", "F19_F20","F18_F20")
+
+sum_dat <- as.data.frame(sum_dat)
+sum_dat <- rownames_to_column(sum_dat, "Timepoints")
+
+ggplot(data=sum_dat, aes(x=Timepoints, y=delta_means)) +
+  geom_errorbar(aes(ymin=delta_means-delta_sds, ymax=delta_means+delta_sds)) +
+  geom_point() +
+  labs(title="Discordant AF") +
+  scale_x_discrete(limits = c("F18_F19", "F19_F20","F18_F20")) +
+  theme_bw()
+```
+```{R}
+# Relationship between starting (F18) MAF and concordance?
+# start 31% lower with a dif of 0.06 between average F18 MAF for concor insreasing and decreasing AFs.
+mean(concor_increase$F18_MAF)
+mean(concor_decrease$F18_MAF)
+
+sd(concor_increase$F18_MAF)
+sd(concor_decrease$F18_MAF)
+
+t.test(concor_increase$F18_MAF, concor_decrease$F18_MAF) #p-value < 2.2e-16
+
+# concordant increase
+maf_means <- c(mean(concor_increase$F18_MAF), mean(concor_increase$F19_MAF), mean(concor_increase$F20_MAF))
+maf_sds <- c(sd(concor_increase$F18_MAF), mean(concor_increase$F19_MAF), mean(concor_increase$F20_MAF))
+
+sum_maf <- cbind(maf_means, maf_sds)
+rownames(sum_maf) <- c("F18_MAF", "F19_MAF","F20_MAF")
+
+sum_maf <- as.data.frame(sum_maf)
+sum_maf <- rownames_to_column(sum_maf, "Timepoints")
+
+ggplot(data=sum_maf, aes(x=Timepoints, y=maf_means)) +
+  geom_errorbar(aes(ymin=maf_means-maf_sds, ymax=maf_means+maf_sds)) +
+  geom_point() +
+  labs(title="Concordant Increasing AF") +
+  theme_bw()
+
+# concordant decrease
+maf_means <- c(mean(concor_decrease$F18_MAF), mean(concor_decrease$F19_MAF), mean(concor_decrease$F20_MAF))
+maf_sds <- c(sd(concor_decrease$F18_MAF), mean(concor_decrease$F19_MAF), mean(concor_decrease$F20_MAF))
+
+sum_maf <- cbind(maf_means, maf_sds)
+rownames(sum_maf) <- c("F18_MAF", "F19_MAF","F20_MAF")
+
+sum_maf <- as.data.frame(sum_maf)
+sum_maf <- rownames_to_column(sum_maf, "Timepoints")
+
+ggplot(data=sum_maf, aes(x=Timepoints, y=maf_means)) +
+  geom_errorbar(aes(ymin=maf_means-maf_sds, ymax=maf_means+maf_sds)) +
+  geom_point() +
+  labs(title="Concordant Decreasing AF") +
+  theme_bw()
+```
+
+
+Association testing
+```{R}
+#library(qqman)
+
+# look at results just for 
+END_CaM_all <- read.table("~/Desktop/wg_analysis/associations/trait_asso2_filt_results/END_cam_doAsso2.lrt0.gz", header=T, sep="\t")
+Glu_CaM_all <- read.table("~/Desktop/wg_analysis/associations/trait_asso2_filt_results/GLU_cam_doAsso2.lrt0.gz", header=T, sep="\t")
+LKA_CaM_all <- read.table("~/Desktop/wg_analysis/associations/trait_asso2_filt_results/LKA_cam_doAsso2.lrt0.gz", header=T, sep="\t")
+
+```
+
+```{r}
+# CaM END All
+END_CaM_all$SNP<-paste("r",1:length(END_CaM_all$Chromosome), sep="")
+END_CaM_all$pvalue<-pchisq(END_CaM_all$LRT, df=1, lower=F)
+END_CaM_all$Chr <- sapply(gsub("NC", "",
+                            gsub("NW", "", END_CaM_all$Chromosome)), function(x){x}) #create a new column that indicates which chr using a number
+END_CaM_all$Chr <- as.numeric(END_CaM_all$Chr)
+END_CaM_all$fdr_pvalue <- p.adjust(END_CaM_all$pvalue, method="BH")
+subset(END_CaM_all, END_CaM_all$fdr_pvalue<0.05)
+
+# CaM Glu all
+Glu_CaM_all$SNP<-paste("r",1:length(Glu_CaM_all$Chromosome), sep="")
+Glu_CaM_all$pvalue<-pchisq(Glu_CaM_all$LRT, df=1, lower=F)
+Glu_CaM_all$Chr <- sapply(gsub("NC", "",
+                            gsub("NW", "", Glu_CaM_all$Chromosome)), function(x){x}) #create a new column that indicates which chr using a number
+Glu_CaM_all$Chr <- as.numeric(Glu_CaM_all$Chr)
+Glu_CaM_all$fdr_pvalue <- p.adjust(Glu_CaM_all$pvalue, method="BH")
+subset(Glu_CaM_all, Glu_CaM_all$fdr_pvalue<0.05)
+
+# CaM LKA all
+LKA_CaM_all$SNP<-paste("r",1:length(LKA_CaM_all$Chromosome), sep="")
+LKA_CaM_all$pvalue<-pchisq(LKA_CaM_all$LRT, df=1, lower=F)
+LKA_CaM_all$Chr <- sapply(gsub("NC", "",
+                            gsub("NW", "", LKA_CaM_all$Chromosome)), function(x){x}) #create a new column that indicates which chr using a number
+LKA_CaM_all$Chr <- as.numeric(LKA_CaM_all$Chr)
+LKA_CaM_all$fdr_pvalue <- p.adjust(LKA_CaM_all$pvalue, method="BH")
+subset(LKA_CaM_all, LKA_CaM_all$fdr_pvalue<0.05)
+
+# CaM
+#manhattan(END_CaM_all, chr="Chr", bp="Position", p="pvalue", main="CaM END all",suggestiveline = -log10(0.05), genomewideline=-log10(1e-7))
+#qqnorm(END_CaM_all$pvalue, main="CaM END all")
+
+#manhattan(LKA_CaM_all, chr="Chr", bp="Position", p="pvalue", main="CaM LKA all")
+#qqnorm(LKA_CaM_all$pvalue, main="CaM LKA all")
+
+#manhattan(Glu_CaM_all, chr="Chr", bp="Position", p="pvalue", main="CaM Glu all", ylim=c(0,-log10(0.0000000000000000000000001)))
+#qqnorm(Glu_CaM_all$pvalue, main="CaM Glu all")
+
+```
+
+```{r}
+# Assoc results for RNA MEs
+#had to specify columns to get rid of the total column
+file_list <- list.files(path="~/Desktop/wg_analysis/associations/ME_asso2_cov_nofilt_filt_results/brain")
+file_list
+for (i in 1:length(file_list)){
+  temp_data <- read.table(paste0("~/Desktop/wg_analysis/associations/ME_asso2_cov_nofilt_filt_results/brain/",file_list[i]), header=T, sep="\t") #each file will be read in
+  temp_data$SNP<-paste("r",1:length(temp_data$Chromosome), sep="")
+  temp_data$pvalue<-pchisq(temp_data$LRT, df=1, lower=F)
+  temp_data$Chr <- sapply(gsub("NC", "",
+                            gsub("NW", "", temp_data$Chromosome)), function(x){x}) #create a new column that indicates which chr using a number
+  temp_data$Chr <- as.numeric(temp_data$Chr)
+  temp_data$fdr_pval <- p.adjust(temp_data$pvalue, n=length(temp_data$pvalue))
+  subset(temp_data, temp_data$beta!="NaN")
+  signif_mes <- subset(temp_data, temp_data$fdr_pval<0.05)
+  write.csv(signif_mes, paste0("~/Desktop/wg_analysis/associations/ME_asso2_cov_nofilt_filt_results/brain/",file_list[i],"_results.csv"))
+}
+
+temp_data <- read.table(paste0("~/Desktop/wg_analysis/associations/ME_asso2_cov_nofilt_filt_results/brain/",file_list[9]), header=T, sep="\t")
+temp_data$pvalue<-pchisq(temp_data$LRT, df=1, lower=F)
+hist(temp_data$pvalue, breaks=50, ylim=c(0,100))
+
+#manhattan(temp_data, chr="Chr", bp="Position", p="pvalue", main="brain blue")
+#qqnorm(temp_data$fdr_pval, main="brain blue")
+
+# and the results without the filtering
+file_list <- list.files(path="~/Desktop/wg_analysis/associations/ME_asso2_cov_default_results/heart")
+file_list
+for (i in 1:length(file_list)){
+  temp_data <- read.table(paste0("~/Desktop/wg_analysis/associations/ME_asso2_cov_default_results/heart/",file_list[i]), header=T, sep="\t") #each file will be read in
+  temp_data$SNP<-paste("r",1:length(temp_data$Chromosome), sep="")
+  temp_data$pvalue<-pchisq(temp_data$LRT, df=1, lower=F)
+  temp_data$Chr <- sapply(gsub("NC", "",
+                            gsub("NW", "", temp_data$Chromosome)), function(x){x}) #create a new column that indicates which chr using a number
+  temp_data$Chr <- as.numeric(temp_data$Chr)
+  temp_data$fdr_pval <- p.adjust(temp_data$pvalue, n=length(temp_data$pvalue))
+  subset(temp_data, temp_data$beta!="NaN")
+  signif_mes <- subset(temp_data, temp_data$fdr_pval<0.05)
+  write.csv(signif_mes, paste0("~/Desktop/wg_analysis/associations/ME_asso2_cov_default_results/heart/",file_list[i],"_results.csv"))
+}
+```
+
+```{r}
+# Association results for trait correlations
+# Assoc results for RNA MEs
+#had to specify columns to get rid of the total column
+file_list <- list.files(path="~/Desktop/wg_analysis/associations/trait_asso2_results")
+file_list
+for (i in 1:length(file_list)){
+  temp_data <- read.table(paste0("~/Desktop/wg_analysis/associations/trait_asso2_results/",file_list[i]), header=T, sep="\t") #each file will be read in
+  temp_data$SNP<-paste("r",1:length(temp_data$Chromosome), sep="")
+  temp_data$pvalue<-pchisq(temp_data$LRT, df=1, lower=F)
+  temp_data$Chr <- sapply(gsub("NC", "",
+                            gsub("NW", "", temp_data$Chromosome)), function(x){x}) #create a new column that indicates which chr using a number
+  temp_data$Chr <- as.numeric(temp_data$Chr)
+  temp_data$fdr_pval <- p.adjust(temp_data$pvalue, n=length(temp_data$pvalue))
+  subset(temp_data, temp_data$beta!="NaN")
+  signif_mes <- subset(temp_data, temp_data$fdr_pval<0.05)
+  write.csv(signif_mes, paste0("~/Desktop/wg_analysis/associations/trait_asso2_results/",file_list[i],"_results.csv"))
+}
+
+
+```
+
+```{r}
+# Extract expression values for top single mRNAs within modules that explain traits
+
+# import list of top mRNAs for each module for heart and brains (12 heart and 6 brain module~trait correlations)
+single_brain <- read.csv("~/Desktop/wg_analysis/associations/single_brain_mRNAs.txt", header=FALSE)
+single_heart <- read.csv("~/Desktop/wg_analysis/associations/single_heart_mRNAs.txt", header=FALSE)
+
+# read in filtered counts tables
+b_mrna <- read.csv("~/Documents/School/RSMAS/Research/Spring2021/Writing/RNA_seq_F18_OCNJ/OCNJ_F18_RNA/brain_counts_filtered.csv") 
+h_mrna <- read.csv("~/Documents/School/RSMAS/Research/Spring2021/Writing/RNA_seq_F18_OCNJ/OCNJ_F18_RNA/heart_counts_filtered.csv") 
+
+# keep rows by matching to list of single mrnas
+b_mrna_keep <- subset(b_mrna, b_mrna$X %in% single_brain$V1)
+h_mrna_keep <- subset(h_mrna, h_mrna$X %in% single_heart$V1)
+
+# save the order so it can be fixed later, has to be in same order as the beagle file for F18 individuals
+b_order <- colnames(b_mrna_keep)
+h_order <- colnames(h_mrna_keep)
+
+# write out to /Desktop/wg_analysis/associations/input_data/individual_mRNAs
+#write.csv(b_mrna_keep, "~/Desktop/wg_analysis/associations/input_data/individual_mRNAs/brain_single_mRNA_expression.csv")
+#write.csv(h_mrna_keep, "~/Desktop/wg_analysis/associations/input_data/individual_mRNAs/heart_single_mRNA_expression.csv")
+
+#write.csv(b_order, "~/Desktop/wg_analysis/associations/input_data/individual_mRNAs/brain_sample_order.csv")
+#write.csv(h_order, "~/Desktop/wg_analysis/associations/input_data/individual_mRNAs/heart_sample_order.csv")
+
+```
+
+```{R}
+# Get association results for single RNAs
+# heart
+file_list <- list.files(path="~/Desktop/wg_analysis/associations/single_mRNA_filt_results/heart/")
+file_list
+for (i in 1:length(file_list)){
+  temp_data <- read.table(paste0("~/Desktop/wg_analysis/associations/single_mRNA_filt_results/heart/",file_list[i]), header=T, sep="\t") #each file will be read in
+  temp_data$SNP<-paste("r",1:length(temp_data$Chromosome), sep="")
+  temp_data$pvalue<-pchisq(temp_data$LRT, df=1, lower=F)
+  temp_data$Chr <- sapply(gsub("NC", "",
+                            gsub("NW", "", temp_data$Chromosome)), function(x){x}) #create a new column that indicates which chr using a number
+  temp_data$Chr <- as.numeric(temp_data$Chr)
+  temp_data$fdr_pval <- p.adjust(temp_data$pvalue, n=length(temp_data$pvalue))
+  subset(temp_data, temp_data$beta!="NaN")
+  signif_mes <- subset(temp_data, temp_data$fdr_pval<0.05)
+  write.csv(signif_mes, paste0("~/Desktop/wg_analysis/associations/single_mRNA_filt_results/heart/",file_list[i],"_results.csv"))
+}
+
+# brain
+file_list <- list.files(path="~/Desktop/wg_analysis/associations/single_mRNA_filt_results/brain/")
+file_list
+for (i in 1:length(file_list)){
+  temp_data <- read.table(paste0("~/Desktop/wg_analysis/associations/single_mRNA_filt_results/brain/",file_list[i]), header=T, sep="\t") #each file will be read in
+  temp_data$SNP<-paste("r",1:length(temp_data$Chromosome), sep="")
+  temp_data$pvalue<-pchisq(temp_data$LRT, df=1, lower=F)
+  temp_data$Chr <- sapply(gsub("NC", "",
+                            gsub("NW", "", temp_data$Chromosome)), function(x){x}) #create a new column that indicates which chr using a number
+  temp_data$Chr <- as.numeric(temp_data$Chr)
+  temp_data$fdr_pval <- p.adjust(temp_data$pvalue, n=length(temp_data$pvalue))
+  subset(temp_data, temp_data$beta!="NaN")
+  signif_mes <- subset(temp_data, temp_data$fdr_pval<0.05)
+  write.csv(signif_mes, paste0("~/Desktop/wg_analysis/associations/single_mRNA_filt_results/brain/",file_list[i],"_results.csv"))
+}
+
+```
+
+
+```{R}
+# Significant brain associations with MEs
+brain_assoc <- read.csv("~/Desktop/wg_analysis/associations/ME_asso2_cov_filt_results/brain/all_brain_ME_results_pruned.csv")
+brain_assoc <- brain_assoc[,c(2:18)]
+brain_assoc <- distinct(brain_assoc)
+
+# Significant heart associationas with MEs
+heart_assoc <- read.csv("~/Desktop/wg_analysis/associations/ME_asso2_cov_filt_results/heart/all_heart_ME_results_pruned.csv")
+heart_assoc <- heart_assoc[,c(2:18)]
+heart_assoc <- distinct(heart_assoc)
+
+# Significant trait associations
+trait_assoc <- read.csv("~/Desktop/wg_analysis/associations/trait_asso2_filt_results/all_trait_results.csv")
+trait_assoc <- distinct(trait_assoc)
+
+# Significant module to trait associations
+trait_modules <- read.csv("~/Desktop/wg_analysis/associations/all_module_trait_correlations.csv")
+trait_modules <- distinct(trait_modules)
+
+
+trait_assoc$snp_name <- paste0(trait_assoc$Chromosome, trait_assoc$Position)
+brain_assoc$snp_name <- paste0(brain_assoc$Chromosome, brain_assoc$Position)
+heart_assoc$snp_name <- paste0(heart_assoc$Chromosome, heart_assoc$Position)
+
+
+subset(brain_assoc, brain_assoc$snp_name %in% heart_assoc$snp_name==TRUE)
+subset(heart_assoc, heart_assoc$snp_name %in% brain_assoc$snp_name==TRUE)
+
+subset(trait_assoc, trait_assoc$snp_name %in% brain_assoc$snp_name==TRUE)
+subset(trait_assoc, trait_assoc$snp_name %in% heart_assoc$snp_name==TRUE)
+
+# are any of the eQTLs related to modules that explain trait variance? YES
+brain_trait_mod <- subset(brain_assoc, brain_assoc$module %in% trait_modules$module==TRUE) #20/220 (9.1%)
+heart_trait_mod <- subset(heart_assoc, heart_assoc$module %in% trait_modules$module==TRUE) # 39/191 (20.4%)
+subset(trait_assoc, trait_assoc$module %in% trait_modules$module==TRUE) # 0/12 (0%)
+
+# but how many are unique?
+length(unique(brain_trait_mod$snp_name))
+length(unique(heart_trait_mod$snp_name))
+
+# do the eQTLs related to modules that explain trait variance shared between hearts and brains? NO
+subset(brain_trait_mod, brain_trait_mod$snp_name %in% heart_trait_mod$snp_name==TRUE) # 0 
+subset(heart_trait_mod, heart_trait_mod$snp_name %in% brain_trait_mod$snp_name==TRUE) # 0 
+
+
+# how many total significant brain and heart associations are there
+nrow(brain_assoc)
+nrow(heart_assoc)
+
+# how many unique SNPs does this include
+length(unique(brain_assoc$snp_name))
+length(unique(heart_assoc$snp_name))
+
+# how many unique modules?
+length(unique(brain_assoc$module))
+length(unique(heart_assoc$module))
+
+# how many correlations per SNP since they aren't all unique?
+brain_counts <- brain_assoc %>% group_by(snp_name) %>% count()
+max(brain_counts$n)
+mean(brain_counts$n)
+sd(brain_counts$n)
+
+brain_greater1 <- subset(brain_counts, brain_counts$n > 1)
+mean(brain_greater1$n)
+sd(brain_greater1$n)
+
+heart_counts <- heart_assoc %>% group_by(snp_name) %>% count()
+max(heart_counts$n)
+mean(heart_counts$n)
+sd(heart_counts$n)
+
+heart_greater1 <- subset(heart_counts, heart_counts$n > 1)
+mean(heart_greater1$n)
+sd(heart_greater1$n)
+```
+
+```{R}
+# Annotate the significantly associated SNPs (used SNPs as bedfile to extract GFF features)
+brain_annot <- read.table("~/Desktop/wg_analysis/associations/ME_asso2_cov_filt_results/brain/brain_annot.txt", sep="\t")
+heart_annot <- read.table("~/Desktop/wg_analysis/associations/ME_asso2_cov_filt_results/heart/heart_annot.txt", sep="\t")
+trait_annot <- read.table("~/Desktop/wg_analysis/associations/trait_asso2_filt_results/trait_annot.txt", sep="\t")
+
+colnames(brain_annot) <- c("chromosome", "source","type", "pos1", "pos2", "score", "strand", "phase", "attributes", "chr", "start", "end")
+colnames(heart_annot) <- c("chromosome", "source","type", "pos1", "pos2", "score", "strand", "phase", "attributes","chr","start","end")
+colnames(trait_annot) <- c("chromosome", "source","type", "pos1", "pos2", "score", "strand", "phase", "attributes","chr","start","end")
+
+brain_annot$snp_name <- paste0(brain_annot$chromosome, brain_annot$pos1)
+heart_annot$snp_name <- paste0(heart_annot$chromosome, heart_annot$pos1)
+
+# first have to edit the snp_name in brain_assoc and heart_assoc and trait_assoc files to have NC_ NW_
+brain_trait_mod$snp_name <- gsub("NC", "NC_", brain_trait_mod$snp_name)
+heart_trait_mod$snp_name <- gsub("NC", "NC_", heart_trait_mod$snp_name)
+brain_trait_mod$snp_name <- gsub("NW", "NW_", brain_trait_mod$snp_name)
+heart_trait_mod$snp_name <- gsub("NW", "NW_", heart_trait_mod$snp_name)
+
+
+brain_info <- left_join(brain_annot, brain_trait_mod, by="snp_name")
+heart_info <- left_join(heart_annot, heart_trait_mod, by="snp_name")
+
+brain_info <- subset(brain_info, brain_info$module!="NA")
+heart_info <- subset(heart_info, heart_info$module!="NA")
+
+```
+
+```{r}
+# look at single mRNAs and overlap with other lists and get them annotated
+single_brain <- read.csv("~/Desktop/wg_analysis/associations/single_mRNA_filt_results/brain/all_brain_signif_pruned.csv")
+single_heart <- read.csv("~/Desktop/wg_analysis/associations/single_mRNA_filt_results/heart/all_heart_signif_pruned.csv")
+
+single_brain$snp_name <- paste0(single_brain$Chromosome, single_brain$Position)
+single_heart$snp_name <- paste0(single_heart$Chromosome, single_heart$Position)
+brain_assoc$snp_name <- paste0(brain_assoc$Chromosome, brain_assoc$Position)
+heart_assoc$snp_name <- paste0(heart_assoc$Chromosome, heart_assoc$Position)
+
+# do these overlap with ME eQTLs?
+subset(brain_assoc, brain_assoc$snp_name %in% single_brain$snp_name) # 0 overlap
+subset(heart_assoc, heart_assoc$snp_name %in% single_heart$snp_name) # 0 overlap
+
+# Add annotations to the SNPs
+# first get annotation list by making bed file of SNPs and then pulling from GTF file
+brain_single_annot <- read.table("~/Desktop/wg_analysis/associations/single_mRNA_filt_results/brain/brain_snp_annot.txt", sep="\t")
+heart_single_annot <- read.table("~/Desktop/wg_analysis/associations/single_mRNA_filt_results/heart/heart_snp_annot.txt", sep="\t")
+
+# add the col names
+colnames(brain_single_annot) <- c("chromosome", "pos1", "pos2", "chr", "Gnomon", "annot","start", "end","score" ,"strand", "phase", "attributes")
+colnames(heart_single_annot) <- c("chromosome", "pos1", "pos2", "chr", "Gnomon", "annot","start","end", "score", "strand", "phase", "attributes")
+
+# then add SNP name
+brain_single_annot$snp_name <- paste0(brain_single_annot$chromosome, brain_single_annot$pos2)
+heart_single_annot$snp_name <- paste0(heart_single_annot$chromosome, heart_single_annot$pos2)
+
+# edit the SNP name to have NC_ and NW_
+single_brain$snp_name <- gsub("NW", "NW_", single_brain$snp_name)
+single_heart$snp_name <- gsub("NW", "NW_", single_heart$snp_name)
+single_brain$snp_name <- gsub("NC", "NC_", single_brain$snp_name)
+single_heart$snp_name <- gsub("NC", "NC_", single_heart$snp_name)
+
+
+# merge by SNP name, use full_join to keep even SNPs without annotation information
+brain_single_info <- full_join(brain_single_annot, single_brain, by="snp_name")
+heart_single_info <- full_join(heart_single_annot, single_heart, by="snp_name")
+
+# split attributes column into seperate fields
+brain_single_info <- separate(data = brain_single_info, col = attributes, into=c("gene_id", "transcript_id","db_xref","gbkey","gene_biotype"), sep = "\\;")
+heart_single_info <- separate(data = heart_single_info, col = attributes, into=c("gene_id", "transcript_id","db_xref","gbkey","gene_biotype"), sep = "\\;")
+
+# clean up the new columns
+brain_single_info$gene_id <- gsub("gene_id ", "", brain_single_info$gene_id)
+brain_single_info$db_xref <- gsub("db_xref ", "", brain_single_info$db_xref)
+brain_single_info$gbkey <- gsub("gbkey ", "", brain_single_info$gbkey)
+
+heart_single_info$gene_id <- gsub("gene_id ", "", heart_single_info$gene_id)
+heart_single_info$db_xref <- gsub("db_xref ", "", heart_single_info$db_xref)
+heart_single_info$gbkey <- gsub("gbkey ", "", heart_single_info$gbkey)
+
+# keep only the relevant gene annotation column and then filter to remove duplicate rows
+heart_single_info <- heart_single_info[,c("chromosome","pos2", "gene_id","snp_name", "LRT","high_WT.HE.HO","WT","HE","HO","fdr_pval","X")]
+brain_single_info <- brain_single_info[,c("chromosome","pos2", "gene_id","snp_name", "LRT","high_WT.HE.HO","WT","HE","HO","fdr_pval","X")]
+
+# correlations per SNP since they arent all unique
+brain_single_counts <- single_brain %>% group_by(snp_name) %>% count()
+max(brain_single_counts$n)
+mean(brain_single_counts$n)
+sd(brain_single_counts$n)
+
+heart_single_counts <- single_heart %>% group_by(snp_name) %>% count()
+max(heart_single_counts$n)
+mean(heart_single_counts$n)
+sd(heart_single_counts$n)
+
+# get a new column with just the associated mRNA name (aka the name of the gene whos expression is being impacted)
+heart_single_info$assoc_mrna <- gsub("_mRNA_heart.txt_results_doAsso4_cov_default.lrt0.gz_results.csv", "", heart_single_info$X)
+brain_single_info$assoc_mrna <- gsub("_mRNA_brain.txt_results_doAsso4_cov_default.lrt0.gz_results.csv", "", brain_single_info$X)
+
+heart_single_info$assoc_mrna <- gsub("_mRNA_heart.txt_results_doAsso4_cov_default.lrt0.gz_results", "", heart_single_info$X)
+brain_single_info$assoc_mrna <- gsub("_mRNA_brain.txt_results_doAsso4_cov_default.lrt0.gz_results", "", brain_single_info$X)
+
+# does the SNP annotation sit in the same gene?
+nrow(subset(brain_single_info, brain_single_info$gene_id == brain_single_info$assoc_mrna)) # 0
+nrow(subset(heart_single_info, heart_single_info$gene_id == heart_single_info$assoc_mrna)) # 0 
+
+# how many genes are the eQTLs in
+length(unique(heart_single_info$gene_id)) #36
+length(unique(brain_single_info$gene_id)) #50
+
+# how many mRNAs related to the eQTLs
+length(unique(brain_single_info$assoc_mrna)) # 85 mRNAs explained by the eQTLs have annotation data
+length(unique(heart_single_info$assoc_mrna)) # 55 mRNAs explained by the eQTLs have annotation data
+
+# how many unique SNPs
+length(unique(brain_single_info$snp_name)) #154
+length(unique(heart_single_info$snp_name)) #52
+
+# shared SNPs?
+length(unique(subset(brain_single_info$snp_name, brain_single_info$snp_name %in% heart_single_info$snp_name))) #12 shared SNPs 
+nrow(unique(subset(brain_single_info, brain_single_info$snp_name %in% heart_single_info$snp_name))) #18 total correlations to those 12 shared SNPs
+
+# shared genes?
+length(unique(subset(brain_single_info$assoc_mrna, brain_single_info$assoc_mrna %in% heart_single_info$assoc_mrna))) #1 shared mRNA
+nrow(unique(subset(brain_single_info, brain_single_info$assoc_mrna %in% heart_single_info$assoc_mrna))) #associated with 3 eQTLs in brain 
+nrow(unique(subset(heart_single_info, heart_single_info$assoc_mrna %in% brain_single_info$assoc_mrna))) #associated with 1 eQTL in heart
+
+# how many total associations
+nrow(single_brain) #270 total associations
+nrow(single_heart) #84 total associations
+
+# sample sizes
+mean(single_brain$real_n)
+sd(single_brain$real_n)
+max(single_brain$real_n)
+min(single_brain$real_n)
+
+mean(single_brain$WT)
+sd(single_brain$WT)
+mean(single_brain$HE)
+sd(single_brain$HE)
+mean(single_brain$HO)
+sd(single_brain$HO)
+
+mean(single_heart$real_n)
+sd(single_heart$real_n)
+max(single_heart$real_n)
+min(single_heart$real_n)
+
+mean(single_heart$WT)
+sd(single_heart$WT)
+mean(single_heart$HE)
+sd(single_heart$HE)
+mean(single_heart$HO)
+sd(single_heart$HO)
+
+# match the mRNAs that eQTLs explain up to genomic coordinates
+# have to make these files by grepping from the gtf file first
+brain_single_gene_coord <- read.table("~/Desktop/wg_analysis/associations/single_mRNA_filt_results/brain/brain_mRNA_coordinates_annot.txt", sep="\t", header=F)
+
+heart_single_gene_coord <- read.table("~/Desktop/wg_analysis/associations/single_mRNA_filt_results/heart/heart_mRNA_coordinates_annot.txt", sep="\t", header=F)
+
+# add column names
+colnames(brain_single_gene_coord) <- c("chromosome_mRNA","gnomon_mRNA","annot_mRNA","gene_start_mRNA", "gene_end_mRNA","score_mRNA","strand_mRNA","phase_mRNA","annotations_mRNA")
+colnames(heart_single_gene_coord) <- c("chromosome_mRNA","gnomon_mRNA","annot_mRNA","gene_start_mRNA", "gene_end_mRNA","score_mRNA","strand_mRNA","phase_mRNA","annotations_mRNA")
+
+# split attributes column into seperate fields
+brain_single_gene_coord <- separate(data = brain_single_gene_coord, col = annotations_mRNA, into=c("gene_id", "transcript_id","db_xref","gbkey","gene_biotype"), sep = "\\;")
+heart_single_gene_coord <- separate(data = heart_single_gene_coord, col = annotations_mRNA, into=c("gene_id", "transcript_id","db_xref","gbkey","gene_biotype"), sep = "\\;")
+
+brain_single_gene_coord$assoc_mrna <- gsub("gene_id ", "", brain_single_gene_coord$gene_id)
+heart_single_gene_coord$assoc_mrna <- gsub("gene_id ", "", heart_single_gene_coord$gene_id)
+
+brain_single_gene_coord <- brain_single_gene_coord[,c("assoc_mrna","chromosome_mRNA","gene_start_mRNA")]
+heart_single_gene_coord <- heart_single_gene_coord[,c("assoc_mrna","chromosome_mRNA","gene_start_mRNA")]
+
+brain_single_gene_coord <- brain_single_gene_coord[match(unique(brain_single_gene_coord$assoc_mrna), brain_single_gene_coord$assoc_mrna),]
+
+heart_single_gene_coord <- heart_single_gene_coord[match(unique(heart_single_gene_coord$assoc_mrna), heart_single_gene_coord$assoc_mrna),]
+
+#brain_single_gene_coord <- brain_single_gene_coord[,c("chromosome_mRNA", "assoc_mrna")]
+#heart_single_gene_coord <- heart_single_gene_coord[,c("chromosome_mRNA","assoc_mrna")]
+
+brain_single_info$assoc_mrna <- gsub("\\.csv", "", brain_single_info$assoc_mrna)
+heart_single_info$assoc_mrna <- gsub("\\.csv", "", heart_single_info$assoc_mrna)
+
+brain_single_gene_coord <- unique(brain_single_gene_coord)
+heart_single_gene_coord <- unique(heart_single_gene_coord)
+
+# matching grep pattern gets some nonspecific matches so filter this list again before merging
+brain_single_gene_coord <- subset(brain_single_gene_coord, brain_single_gene_coord$assoc_mrna %in% brain_single_info$assoc_mrna)
+heart_single_gene_coord <- subset(heart_single_gene_coord, heart_single_gene_coord$assoc_mrna %in% heart_single_info$assoc_mrna)
+
+brain_info_merged <- full_join(brain_single_info, brain_single_gene_coord, by="assoc_mrna")
+heart_info_merged <- full_join(heart_single_info, heart_single_gene_coord, by="assoc_mrna")
+
+brain_info_merged <- unique(brain_info_merged)
+heart_info_merged <- unique(heart_info_merged)
+
+brain_info_merged <- subset(brain_info_merged, brain_info_merged$chromosome!="NA")
+heart_info_merged <- subset(heart_info_merged, heart_info_merged$chromosome!="NA")
+
+# are they cis or trans??
+nrow(subset(brain_info_merged, brain_info_merged$chromosome==brain_info_merged$chromosome_mRNA)) #6 cis out of 183 (3.3%)
+
+nrow(subset(heart_info_merged, heart_info_merged$chromosome==heart_info_merged$chromosome_mRNA)) #2 cis out of 75 (2.6%)
+
+# are the cis acting eQTLs trans acting for other mRNAs ?
+brain_cis <- subset(brain_info_merged, brain_info_merged$chromosome==brain_info_merged$chromosome_mRNA)
+
+nrow(unique(subset(brain_info_merged, brain_info_merged$snp_name %in% brain_cis$snp_name))) # yes 6 cis acting have 13 total significant correlations (2 are trans acing on other mRNAs)
+
+heart_cis <- subset(heart_info_merged, heart_info_merged$chromosome==heart_info_merged$chromosome_mRNA)
+
+nrow(unique(subset(heart_info_merged, heart_info_merged$snp_name %in% heart_cis$snp_name))) # yes 2 cis acting have 3 total significant correlations (1 is trans acting on other mRNAs)
+```
+
+
+```{r}
+# Make a heatmap/correlation plot for the single RNA eQTLs
+# read in module data:
+brain_mod_match <- read.csv("~/Desktop/wg_analysis/associations/brain_mRNA_module_match.csv")
+heart_mod_match <- read.csv("~/Desktop/wg_analysis/associations/heart_mRNA_module_match.csv")
+
+# brain
+head(brain_info_merged)
+brain_single_matrix <- brain_info_merged[,c(1,2,10,12,13)]
+
+brain_single_matrix$snp_name <- paste0(brain_single_matrix$chromosome, brain_single_matrix$pos2)
+brain_single_matrix <- brain_single_matrix[,c(1,3,4,5,6)]
+brain_single_matrix <- unique(brain_single_matrix)
+
+#brain_single_matrix <- read.csv("brain_single_matrix.csv")
+# make a matrix for heatmap
+# Transform the matrix in long format
+brain_mat <- melt(brain_single_matrix)
+brain_mat <- brain_mat[order(brain_mat$snp_name),]
+
+brain_mat <- left_join(brain_mat, brain_mod_match, by="assoc_mrna")
+
+ggplot(brain_mat, aes(x=snp_name, y=assoc_mrna)) +
+  geom_point() +
+  geom_vline(xintercept =c(2.5,4.5,10.5,13.5,15.5,21.5,24.5,25.5,35.5,37.5,48.5,50.5,56.5,57.5,59.5,60.5,61.5,65.5,68.5,73.5,75.5,78.5,79.5,86.5,87.5,89.5,90.5,94.5,96.5,99.5), linetype = "dashed", colour = "red",size = 0.25) +
+  theme_bw() +
+  theme(axis.text.x=element_blank(), #remove x axis labels
+        axis.ticks.x=element_blank(), #remove x axis ticks
+        axis.text.y=element_blank(),  #remove y axis labels
+        axis.ticks.y=element_blank(), #remove y axis ticks
+        legend.position="none") +   #remove figure legend
+  labs(x="eQTL", y="mRNA", title="Brain Single mRNA eQTLs")
+  
+brain_eqtl_n <- brain_mat %>% group_by(snp_name) %>% count()
+brain_mrna_n <- brain_mat %>% group_by(assoc_mrna) %>% count()
+
+nrow(brain_eqtl_n)
+nrow(subset(brain_eqtl_n, brain_eqtl_n$n >1))
+
+ggplot(brain_eqtl_n, aes(x=snp_name, y=n)) + 
+  geom_bar(stat="identity") + 
+  theme_bw() +
+  theme(axis.text.x=element_blank(), #remove x axis labels
+        axis.ticks.x=element_blank(), #remove x axis ticks
+        )
+
+# how many on each chr for gene and snp axis so I can get the vertical lines in there and label these right and get rid of chunky labels
+brain_mat <- unique(brain_mat)
+chr_counts_brain <- brain_mat %>% group_by(chromosome) %>% count()
+
+ggplot(chr_counts_brain, aes(x=chromosome, y=n)) + 
+  geom_bar(stat="identity") + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+################################################3# heart
+head(heart_info_merged)
+heart_single_matrix <- heart_info_merged[,c(1,2,10,12,13)]
+
+heart_single_matrix$snp_name <- paste0(heart_single_matrix$chromosome, heart_single_matrix$pos2)
+heart_single_matrix <- heart_single_matrix[,c(1,3,4,5,6)]
+
+# make a matrix for heatmap
+# Transform the matrix in long format
+heart_mat <- melt(heart_single_matrix)
+heart_mat <- heart_mat[order(heart_mat$snp_name),]
+heart_mat <- unique(heart_mat)
+
+heart_mat <- left_join(heart_mat, heart_mod_match, by="assoc_mrna")
+
+ggplot(heart_mat, aes(x=snp_name, y=assoc_mrna)) +
+  geom_point() +
+  geom_vline(xintercept =c(1.5,2.5,3.5,5.5,6.5,7.5,9.5,10.5,16.5,18.5,19.5,22.5,25.5,29.5,31.5,32.5,34.5,37.5,38.5,40.5,41.5,42.5), linetype = "dashed", colour = "red",size = 0.25) +
+    theme_bw()+
+  theme(axis.text.x=element_blank(), #remove x axis labels
+        axis.ticks.x=element_blank(), #remove x axis ticks
+        axis.text.y=element_blank(),  #remove y axis labels
+        axis.ticks.y=element_blank(),  #remove y axis ticks
+        legend.position="none") + #remove figure legend
+  labs(x="eQTL", y="mRNA", title="Heart Single mRNA eQTLs") 
+
+heart_eqtl_n <- heart_mat %>% group_by(snp_name) %>% count()
+heart_mrna_n <- heart_mat %>% group_by(assoc_mrna) %>% count()
+
+nrow(heart_eqtl_n)
+nrow(subset(heart_eqtl_n, heart_eqtl_n$n >1))
+
+ggplot(heart_eqtl_n, aes(x=snp_name, y=n)) + 
+  geom_bar(stat="identity") + 
+  theme_bw() +
+  theme(axis.text.x=element_blank(), #remove x axis labels
+        axis.ticks.x=element_blank(), #remove x axis ticks
+        )
+# how many on each chr for gene and snp axis so I can get the vertical lines in there and label these right and get rid of chunky labels
+chr_counts_heart <- heart_mat %>% group_by(chromosome) %>% count()
+
+ggplot(chr_counts_heart, aes(x=chromosome, y=n)) + 
+  geom_bar(stat="identity") + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+```{r}
+# are eQTLs explaining multiple mRNAs from the same module?
+brain_mod_match <- read.csv("~/Desktop/wg_analysis/associations/brain_mRNA_module_match.csv")
+heart_mod_match <- read.csv("~/Desktop/wg_analysis/associations/heart_mRNA_module_match.csv")
+
+# ten mRNAs from each module in the list
+heart_mod_match %>% group_by(heart_module) %>% count()
+brain_mod_match %>% group_by(brain_module) %>% count()
+
+# 12 overlapping to begin with
+nrow(subset(brain_mod_match, brain_mod_match$assoc_mrna %in% heart_mod_match$assoc_mrna))
+
+# overlap among eQTL that impact mRNAs within the same module?
+h1 <- subset(heart_mat, heart_mat$heart_module=="lightgreen")
+h1
+nrow(h1) #5
+length(unique(h1$snp_name)) #5
+
+unique(heart_mat$heart_module)
+
+
+b1 <- subset(brain_mat, brain_mat$brain_module=="darkgrey")
+b1
+nrow(b1) #5
+length(unique(b1$snp_name)) #5
+
+unique(brain_mat$brain_module)
+
+
+t.test2 <- function(m1,m2,s1,s2,n1,n2,m0=0,equal.variance=FALSE)
+{
+    if( equal.variance==FALSE ) 
+    {
+        se <- sqrt( (s1^2/n1) + (s2^2/n2) )
+        # welch-satterthwaite df
+        df <- ( (s1^2/n1 + s2^2/n2)^2 )/( (s1^2/n1)^2/(n1-1) + (s2^2/n2)^2/(n2-1) )
+    } else
+    {
+        # pooled standard deviation, scaled by the sample sizes
+        se <- sqrt( (1/n1 + 1/n2) * ((n1-1)*s1^2 + (n2-1)*s2^2)/(n1+n2-2) ) 
+        df <- n1+n2-2
+    }      
+    t <- (m1-m2-m0)/se 
+    dat <- c(m1-m2, se, t, 2*pt(-abs(t),df))    
+    names(dat) <- c("Difference of means", "Std Error", "t", "p-value")
+    return(dat) 
+}
+
+# heart
+t.test2(1.10, 1.58, 0.25, 0.95, 23, 23)
+
+# brain
+t.test2(1.08, 1.68, 0.15, 1.08, 27, 27)
+```
+
+```{r}
+# avg distance among cis-eQTLs
+brain_cis <- subset(brain_info_merged, brain_info_merged$chromosome==brain_info_merged$chromosome_mRNA)
+
+brain_cis <- brain_cis %>%
+  mutate(cis_distance = abs(gene_start_mRNA-pos2))
+
+brain_cis <- unique(brain_cis)
+
+hist(brain_cis$cis_distance, breaks=10)
+
+heart_cis <- subset(heart_info_merged, heart_info_merged$chromosome==heart_info_merged$chromosome_mRNA)
+
+heart_cis <- heart_cis %>%
+  mutate(cis_distance = abs(gene_start_mRNA-pos2))
+
+hist(heart_cis$cis_distance, breaks=10)
+
+mean(heart_cis$cis_distance)
+sd(heart_cis$cis_distance)
+mean(brain_cis$cis_distance)
+sd(brain_cis$cis_distance)
+
+
+cis_stats <- data.frame(matrix(ncol = 3, nrow = 2))
+colnames(cis_stats) <- c("tissue", "cis_mean", "cis_sd")
+cis_stats$tissue <- c("heart", "brain")
+cis_stats$cis_mean <- c(15734618,11532125)
+cis_stats$cis_sd <- c(21903739,3972503)
+
+p1 <- ggplot(brain_cis, aes(x="brain", y=cis_distance)) +
+  geom_point() +
+  geom_point(stat = "summary", fun = "mean", colour = "red", size = 4) +
+  labs(y="Distance between cis eQTL and mRNA (bp)", x="Brain") +
+  theme_bw()
+
+p2 <- ggplot(heart_cis, aes(x="heart", y=cis_distance)) +
+  geom_point() +
+  geom_point(stat = "summary", fun = "mean", colour = "red", size = 4) +
+  labs(y="Distance between cis eQTL and mRNA (bp)", x="Heart") +
+  theme_bw()
+
+
+#library(ggpubr)
+ggarrange(p2 + rremove("x.text"), p1 + rremove("x.text"), 
+          labels = c("B", "D"),
+          nrow = 2)
+```
+
+```{r}
+# Barplots for ME results
+brain_me_counts <- brain_assoc %>% group_by(module) %>% count()
+heart_me_counts <- heart_assoc %>% group_by(module) %>% count()
+
+brain_me_counts$n <- sort(brain_me_counts$n, decreasing=T)
+
+ggplot(brain_me_counts, aes(x=module, y=n)) + 
+  geom_bar(stat="identity") + 
+  ylim(c(0,20)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+heart_me_counts$n <- sort(heart_me_counts$n, decreasing=T)
+
+ggplot(heart_me_counts, aes(x=module, y=n)) + 
+  geom_bar(stat="identity") + 
+  ylim(c(0,20)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+mean(heart_me_counts$n)
+mean(brain_me_counts$n)
+sd(heart_me_counts$n)
+sd(brain_me_counts$n)
+max(brain_me_counts$n)
+max(heart_me_counts$n)
+```
+```{r}
+# overlap among the snps that are correlated to modules that explain traits?
+heart_assoc_blue <- subset(heart_assoc, heart_assoc$module=="heart_blue")
+heart_assoc_darkmagenta <- subset(heart_assoc, heart_assoc$module=="heart_darkmagenta")
+heart_assoc_lightcyan <- subset(heart_assoc, heart_assoc$module=="heart_lightcyan")
+heart_assoc_saddlebrown <- subset(heart_assoc, heart_assoc$module=="heart_saddlebrown")
+heart_assoc_salmon <- subset(heart_assoc, heart_assoc$module=="heart_salmon")
+heart_assoc_violet <- subset(heart_assoc, heart_assoc$module=="heart_violet")
+heart_assoc_orangered4 <- subset(heart_assoc, heart_assoc$module=="heart_orangered4")
+
+
+brain_assoc_pink <- subset(brain_assoc, brain_assoc$module=="brain_pink")
+brain_assoc_violet <- subset(brain_assoc, brain_assoc$module=="brain_violet")
+brain_assoc_orange <- subset(brain_assoc, brain_assoc$module=="brain_orange")
+brain_assoc_purple <- subset(brain_assoc, brain_assoc$module=="brain_purple")
+
+
+lt = list(heart_blue=heart_assoc_blue$snp_name, heart_darkmagenta=heart_assoc_darkmagenta$snp_name, heart_lightcyan=heart_assoc_lightcyan$snp_name, heart_saddlebrown=heart_assoc_saddlebrown$snp_name, heart_salmon=heart_assoc_salmon$snp_name, heart_violet=heart_assoc_violet$snp_name, heart_orangered4=heart_assoc_orangered4$snp_name, brain_pink=brain_assoc_pink$snp_name, brain_violet=brain_assoc_violet$snp_name, brain_orange=brain_assoc_orange$snp_name, brain_purple=brain_assoc_purple$snp_name)
+m1 = make_comb_mat(lt, mode="distinct")
+
+ss = set_size(m1)
+cs = comb_size(m1)
+UpSet(m1, set_order = order(ss),
+    comb_order = order(comb_degree(m1), -cs))
+
+```
+
+```{r}
+# change so the snp_name is in the same format first
+brain_single_test <- brain_single_info
+brain_single_test$snp_name <- gsub("NW_", "NW", brain_single_test$snp_name)
+brain_single_test$snp_name <- gsub("NC_", "NC", brain_single_test$snp_name)
+
+heart_single_test <- heart_single_info
+heart_single_test$snp_name <- gsub("NW_", "NW", heart_single_test$snp_name)
+heart_single_test$snp_name <- gsub("NC_", "NC", heart_single_test$snp_name)
+
+# average number of mRNAs per eQTL
+mean(heart_single_counts$n)
+sd(heart_single_counts$n)
+mean(brain_single_counts$n)
+sd(brain_single_counts$n)
+max(heart_single_counts$n)
+max(brain_single_counts$n)
+
+# average number of eQTLs per mRNA
+mrna_counts_heart <- unique(heart_single_info) %>% group_by(assoc_mrna) %>% count()
+mrna_counts_brain <- unique(brain_single_info) %>% group_by(assoc_mrna) %>% count()
+
+mean(mrna_counts_heart$n)
+sd(mrna_counts_heart$n)
+max(mrna_counts_heart$n)
+mean(mrna_counts_brain$n)
+sd(mrna_counts_brain$n)
+max(mrna_counts_brain$n)
+```
+
+```{r}
+# heart ME cor = heart_assoc
+head(heart_assoc$snp_name)
+# brain ME cor = brain_assoc
+head(brain_assoc$snp_name)
+# trait cor = trait_assoc
+#trait_assoc$snp_name <- paste0(trait_assoc$Chromosome, trait_assoc$Position)
+head(trait_assoc$snp_name)
+# heart single mRNA = single_brain (the brain_info is missing some without annot)
+#single_brain$snp_name <- gsub("NW_", "NW", single_brain$snp_name)
+#single_brain$snp_name <- gsub("NC_", "NC", single_brain$snp_name)
+head(single_brain$snp_name)
+# brain single mRNA = single_heart (the heart_info is missing some without annot)
+#single_heart$snp_name <- gsub("NW_", "NW", single_heart$snp_name)
+#single_heart$snp_name <- gsub("NC_", "NC", single_heart$snp_name)
+head(single_heart$snp_name)
+
+
+# make lists
+heart_me_snps <- unique(heart_assoc$snp_name)
+heart_single_snps <- unique(single_heart$snp_name)
+brain_me_snps <- unique(brain_assoc$snp_name)
+brain_single_snps <- unique(single_brain$snp_name)
+trait_snps <- unique(trait_assoc$snp_name)
+
+# make an upset plot 
+#library(UpSetR)
+#library(ComplexUpset)
+
+lt = list(heart_me_snps=heart_me_snps, heart_single_snps=heart_single_snps, brain_me_snps=brain_me_snps, brain_single_snps=brain_single_snps, trait_snps=trait_snps)
+m1 = make_comb_mat(lt, mode="distinct")
+
+ss = set_size(m1)
+cs = comb_size(m1)
+UpSet(m1, set_order = order(ss),
+    comb_order = order(comb_degree(m1), -cs))
+
+
+# what is the one SNP for brin single and trait and what module is the mrna in
+subset(brain_single_snps, brain_single_snps %in% trait_snps)
+
+subset(single_brain, single_brain$snp_name=="NC046363.131037486")
+subset(trait_assoc, trait_assoc$snp_name=="NC046363.131037486")
+
+# sienna3, not correlated to any traits
+subset(brain_mod_match, brain_mod_match$assoc_mrna=="lmnb1")
+```
+
+
+```{r}
+# Look at realationship with sample size 
+# brain
+mean(brain_assoc$real_n)
+sd(brain_assoc$real_n)
+mean(brain_assoc$wt)
+sd(brain_assoc$wt)
+mean(brain_assoc$he)
+sd(brain_assoc$he)
+mean(brain_assoc$ho)
+sd(brain_assoc$ho)
+
+max(brain_assoc$real_n)
+min(brain_assoc$real_n)
+
+# heart
+mean(heart_assoc$real_n)
+sd(heart_assoc$real_n)
+mean(heart_assoc$wt)
+sd(heart_assoc$wt)
+mean(heart_assoc$he)
+sd(heart_assoc$he)
+mean(heart_assoc$ho)
+sd(heart_assoc$ho)
+
+max(heart_assoc$real_n)
+min(heart_assoc$real_n)
+
+# traits
+mean(trait_assoc$real_n)
+sd(trait_assoc$real_n)
+mean(trait_assoc$wt)
+sd(trait_assoc$wt)
+mean(trait_assoc$he)
+sd(trait_assoc$he)
+mean(trait_assoc$ho)
+sd(trait_assoc$ho)
+
+max(trait_assoc$real_n)
+min(trait_assoc$real_n)
+
+#single mRNAs
+# single brain
+mean(single_brain$real_n)
+sd(single_brain$real_n)
+mean(single_brain$wt)
+sd(single_brain$wt)
+mean(single_brain$he)
+sd(single_brain$he)
+mean(single_brain$ho)
+sd(single_brain$ho)
+
+max(single_brain$real_n)
+min(single_brain$real_n)
+
+# single heart
+mean(single_heart$real_n)
+sd(single_heart$real_n)
+mean(single_heart$wt)
+sd(single_heart$wt)
+mean(single_heart$he)
+sd(single_heart$he)
+mean(single_heart$ho)
+sd(single_heart$ho)
+
+max(single_heart$real_n)
+min(single_heart$real_n)
+```
+
+```{r}
+long_af <- F18_F19_F20_maf[,c(1:3,7,10,13)]
+
+data_long <- gather(long_af, timepoint, MAF, F18_MAF:F20_MAF, factor_key=TRUE)
+head(data_long)
+
+ggplot(data_long, aes(x=timepoint, y=MAF,col=data_long$snp)) +
+  geom_point() +
+  geom_line(stat="identity") +
+  theme_bw()
+```
+
+```{r}
+f18_pvals <- read.table("~/Desktop/wg_analysis/All/F18_FST/F18_snp_pvals.txt", header=TRUE, sep=" ")
+f18_pvals_TEvNR <- subset(f18_pvals, f18_pvals$poppair=="TE.NR")
+f18_pvals_TEvSR <- subset(f18_pvals, f18_pvals$poppair=="TE.SR")
+f18_pvals_NRvSR <- subset(f18_pvals, f18_pvals$poppair=="NR.SR")
+
+f18_pvals_TEvNR$fdr_pvalue <-  p.adjust(f18_pvals_TEvNR$pvalue, method ="BH")
+f18_pvals_TEvSR$fdr_pvalue <-  p.adjust(f18_pvals_TEvSR$pvalue, method ="BH")
+f18_pvals_NRvSR$fdr_pvalue <-  p.adjust(f18_pvals_NRvSR$pvalue, method ="BH")
+
+f18_pvals_TEvNR$bonf_pvalue <-  p.adjust(f18_pvals_TEvNR$pvalue, method ="bonferroni")
+f18_pvals_TEvSR$bonf_pvalue <-  p.adjust(f18_pvals_TEvSR$pvalue, method ="bonferroni")
+f18_pvals_NRvSR$bonf_pvalue <-  p.adjust(f18_pvals_NRvSR$pvalue, method ="bonferroni")
+
+cutoff_pval <- -log10(0.05)
+cutoff_sig <- -log10(1e-7)
+
+#ggplot(f18_pvals, aes(emp_fst)) + 
+  #stat_ecdf(geom = "step", color="purple") +
+  #theme_bw()
+
+hist(f18_pvals_TEvNR$pvalue)
+hist(f18_pvals_TEvNR$fdr_pvalue)
+hist(f18_pvals_TEvSR$pvalue)
+hist(f18_pvals_TEvSR$fdr_pvalue)
+hist(f18_pvals_NRvSR$pvalue)
+hist(f18_pvals_NRvSR$fdr_pvalue)
+
+f18_pvals_signif <- subset(f18_pvals, f18_pvals$pvalue < 0.01)
+nrow(f18_pvals_signif) 
+min(f18_pvals_signif$pvalue) 
+max(f18_pvals_signif$total) 
+
+contigs <- c("NC_046361.1","NC_046362.1","NC_046363.1","NC_046364.1","NC_046365.1","NC_046366.1",   "NC_046367.1","NC_046368.1","NC_046369.1","NC_046370.1","NC_046371.1","NC_046372.1","NC_046373.1"   ,"NC_046374.1","NC_046375.1","NC_046376.1","NC_046377.1","NC_046378.1","NC_046379.1","NC_046380.1"  ,"NC_046381.1","NC_046382.1","NC_046383.1","NC_046384.1" )
+
+for (i in contigs[1:24]) { 
+  print(ggplot(data=subset(f18_pvals, f18_pvals$chromosome==i)) +
+    geom_point(aes(x=pos, y=-log10(pvalue)), pch=1, alpha=0.5, size=2) +
+    geom_hline(yintercept=cutoff_pval, linetype="dashed", color="red") +
+    labs(x="Chromosomal Position", y="-log10(pval)", main="Triad F18") +
+    theme_bw()
+  ) 
+}
+
+for (i in contigs[1:24]) { 
+  print(ggplot(data=subset(f18_pvals, f18_pvals$chromosome==i)) +
+    geom_point(aes(x=pos, y=-log10(fdr_pvalue)), pch=1, alpha=0.5, size=2) +
+    geom_hline(yintercept=cutoff_pval, linetype="dashed", color="red") +
+    labs(x="Chromosomal Position", y="-log10(pval)", main="Triad F18") +
+    theme_bw()
+  ) 
+}
+
+ggplot(data=f18_pvals_TEvSR) +
+    geom_point(aes(x=pos, y=-log10(pvalue)), pch=1, alpha=0.5, size=2) +
+    geom_hline(yintercept=cutoff_pval, linetype="dashed", color="grey") +
+    geom_hline(yintercept=cutoff_sig, linetype="dashed", color="red") +
+    labs(x="Chromosomal Position", y="-log10(pval)", main="Triad F18") +
+    theme_bw()
+
+ggplot(data=f18_pvals_TEvNR) +
+    geom_point(aes(x=pos, y=-log10(pvalue)), pch=1, alpha=0.5, size=2) +
+    geom_hline(yintercept=cutoff_pval, linetype="dashed", color="grey") +
+    geom_hline(yintercept=cutoff_sig, linetype="dashed", color="red") +
+    labs(x="Chromosomal Position", y="-log10(pval)", main="Triad F18") +
+    theme_bw()
+
+ggplot(data=f18_pvals_NRvSR) +
+    geom_point(aes(x=pos, y=-log10(pvalue)), pch=1, alpha=0.5, size=2) +
+    geom_hline(yintercept=cutoff_pval, linetype="dashed", color="grey") +
+    geom_hline(yintercept=cutoff_sig, linetype="dashed", color="red") +
+    labs(x="Chromosomal Position", y="-log10(pval)", main="Triad F18") +
+    theme_bw()
+
+NRvSR_sig <- subset(f18_pvals_NRvSR, f18_pvals_NRvSR$fdr_pvalue<0.05) #0 outliers
+TEvSR_sig <- subset(f18_pvals_TEvSR, f18_pvals_TEvSR$fdr_pvalue<0.05) #3 outliers
+TEvNR_sig <- subset(f18_pvals_TEvNR, f18_pvals_TEvNR$fdr_pvalue<0.05) #0 outliers
+
+NRvSR_sig_bonf <- subset(f18_pvals_NRvSR, f18_pvals_NRvSR$bonf_pvalue<0.05) #0 outliers
+TEvSR_sig_bonf <- subset(f18_pvals_TEvSR, f18_pvals_TEvSR$bonf_pvalue<0.05) #2 outliers
+TEvNR_sig_bonf <- subset(f18_pvals_TEvNR, f18_pvals_TEvNR$bonf_pvalue<0.05) #0 outliers
+```
+
+```{R}
+# ok so basically there are no outliers but also want to show that there are equally extreme Fsts among all groups so use the top 1%
+quantile(f18_pvals$pvalue,0.001) #0.001304792 
+f18_pvals_top1 <- subset(f18_pvals, f18_pvals$pvalue<0.001304792)
+
+
+f18_pvals_NRvSR_top1 <- subset(f18_pvals_top1, f18_pvals_top1$poppair=="NR.SR")
+f18_pvals_TEvNR_top1 <- subset(f18_pvals_top1, f18_pvals_top1$poppair=="TE.NR")
+f18_pvals_TEvSR_top1 <- subset(f18_pvals_top1, f18_pvals_top1$poppair=="TE.SR")
+
+f18_pvals_NRvSR_top1$unique_pos <- paste0(f18_pvals_NRvSR_top1$chromosome, f18_pvals_NRvSR_top1$pos)
+f18_pvals_TEvNR_top1$unique_pos <- paste0(f18_pvals_TEvNR_top1$chromosome, f18_pvals_TEvNR_top1$pos)
+f18_pvals_TEvSR_top1$unique_pos <- paste0(f18_pvals_TEvSR_top1$chromosome, f18_pvals_TEvSR_top1$pos)
+
+F18_NRSR <- f18_pvals_NRvSR_top1$unique_pos
+F18_TENR <- f18_pvals_TEvNR_top1$unique_pos
+F18_TESR <- f18_pvals_TEvSR_top1$unique_pos
+
+# Fall 2018 overalp among pops
+#library(ggVennDiagram)
+x <- list(F18_TENR, F18_NRSR, F18_TESR)
+ggVennDiagram(x,
+              category.names = c("TEvN.Ref","N.RefvS.Ref","TEvS.Ref"), 
+              label_alpha=0,
+              )
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
